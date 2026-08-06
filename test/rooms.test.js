@@ -22,11 +22,18 @@ describe('room store', () => {
   });
 
   it('rejects a duplicate display name in one room', () => {
-    const rooms = createRoomStore(() => 'ABC123');
-    rooms.create({ name: 'Daniel', socketId: 's1' });
+    const store = createRoomStore(() => 'ABC123');
+    const { room } = store.create({ name: 'Daniel', socketId: 'socket-a' });
     assert.throws(
-      () => rooms.join({ code: 'ABC123', name: ' daniel ', socketId: 's2' }),
-      /name/i,
+      () => store.join({ code: room.code, name: 'daniel', socketId: 'socket-b' }),
+      /already at the table/,
     );
+  });
+
+  it('caps the number of rooms to prevent memory exhaustion', () => {
+    const codes = ['ABC123', 'DEF456'];
+    const store = createRoomStore(() => codes.shift(), { maxRooms: 1 });
+    store.create({ name: 'Daniel', socketId: 'socket-a' });
+    assert.throws(() => store.create({ name: 'Family', socketId: 'socket-b' }), /Too many active rooms/);
   });
 });

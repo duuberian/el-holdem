@@ -13,7 +13,7 @@ function cleanName(name) {
   return value;
 }
 
-export function createRoomStore(codeGenerator = defaultCode) {
+export function createRoomStore(codeGenerator = defaultCode, { maxRooms = 500 } = {}) {
   const rooms = new Map();
   const sockets = new Map();
 
@@ -53,6 +53,7 @@ export function createRoomStore(codeGenerator = defaultCode) {
 
   return {
     create({ name, socketId }) {
+      if (rooms.size >= maxRooms) throw new Error('Too many active rooms; try again later');
       const code = uniqueCode();
       const room = { code, game: createGame(), createdAt: Date.now() };
       rooms.set(code, room);

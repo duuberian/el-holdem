@@ -1,3 +1,11 @@
+@font-face{font-family:'Press Start 2P';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/press-start-2p.ttf') format('truetype')}
+@font-face{font-family:'Silkscreen';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/silkscreen-400.ttf') format('truetype')}
+@font-face{font-family:'Silkscreen';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/silkscreen-700.ttf') format('truetype')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:400;font-display:swap;src:url('/fonts/dm-sans-400.ttf') format('truetype')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:500;font-display:swap;src:url('/fonts/dm-sans-500.ttf') format('truetype')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:600;font-display:swap;src:url('/fonts/dm-sans-600.ttf') format('truetype')}
+@font-face{font-family:'DM Sans';font-style:normal;font-weight:700;font-display:swap;src:url('/fonts/dm-sans-700.ttf') format('truetype')}
+
 :root {
   --ink:#fff7d6; --muted:#b9add1; --night:#0d0920; --panel:#20163d;
   --panel-hi:#302052; --felt:#075b55; --felt-hi:#0a8173; --felt-dark:#043d3b;
