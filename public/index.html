@@ -7,7 +7,7 @@
   <meta name="description" content="Private, live Texas Hold'em for family and friends.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=8">
   <title>EL Holdem</title>
 </head>
 <body>
@@ -42,11 +42,19 @@
 
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
+        <span id="app-version" class="version-badge">v0.8</span>
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
         <button id="chip-bank-button" class="chip-bank-button" aria-label="Open chip bank"><span class="mini-chip">20</span></button>
+        <button id="sound-toggle" class="sound-toggle" aria-label="Mute game sounds" aria-pressed="false">SFX</button>
         <button id="share" class="room-pill" aria-label="Copy room invite"><span id="room-code"></span><span class="copy-icon">⌁</span></button>
         <div id="connection" class="connection"><i></i><span>Live</span></div>
       </header>
+
+      <section id="self-bankroll" class="self-bankroll hidden" aria-label="Your chips">
+        <div class="bankroll-total"><span>YOUR CHIPS</span><strong id="self-bankroll-total">0</strong></div>
+        <div id="bankroll-piles" class="bankroll-piles" aria-label="Your chip piles"></div>
+        <button id="reveal-cards" class="reveal-cards hidden" aria-label="Hold to reveal your cards">HOLD<br><strong>CARDS</strong></button>
+      </section>
 
       <div id="table-wrap" class="table-wrap">
         <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
@@ -119,6 +127,6 @@
     </section>
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/client.js"></script>
+  <script type="module" src="/client.js?v=8"></script>
 </body>
 </html>

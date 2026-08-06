@@ -1,8 +1,19 @@
-const CACHE = 'el-holdem-v6';
-const SHELL = ['/', '/style.css', '/client.js', '/icon.svg', '/manifest.webmanifest'];
-self.addEventListener('install', (event) => event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL))));
-self.addEventListener('activate', (event) => event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))));
+const CACHE = 'el-holdem-v8';
+const SHELL = ['/', '/style.css?v=8', '/client.js?v=8', '/icon.svg', '/manifest.webmanifest'];
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(Promise.all([
+    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key)))),
+    self.clients.claim(),
+  ]));
+});
+
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET' || event.request.url.includes('/socket.io/')) return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))));
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request, { ignoreSearch: true }).then((cached) => cached || caches.match('/'))));
 });

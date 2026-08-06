@@ -29,6 +29,8 @@ await host.getByLabel('Your name').fill('Daniel');
 await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
+const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
+if (versionBadge.text !== 'v0.8' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 if (!/^[A-Z0-9]{6}$/.test(roomCode)) throw new Error(`Unexpected room code: ${roomCode}`);
 
@@ -45,6 +47,10 @@ await guest.getByLabel('Your name').fill('Family');
 await guest.getByRole('button', { name: 'Join party' }).click();
 await guest.locator('#game:not(.hidden)').waitFor();
 await host.getByText('Family', { exact: false }).first().waitFor();
+await host.getByRole('button', { name: 'Mute game sounds' }).click();
+if (await host.getByRole('button', { name: 'Mute game sounds' }).getAttribute('aria-pressed') !== 'true') throw new Error('Sound mute state was not exposed');
+await host.getByRole('button', { name: 'Mute game sounds' }).click();
+if (await host.getByRole('button', { name: 'Mute game sounds' }).getAttribute('aria-pressed') !== 'false') throw new Error('Sound enable state was not exposed');
 for (const page of [host, guest]) {
   const stackText = await page.locator('.player.self .player-stack').textContent();
   if (!stackText.includes('2,500')) throw new Error(`Host starting stack was not applied: ${stackText}`);
@@ -54,11 +60,41 @@ await host.getByRole('button', { name: 'Apply starting chips' }).click();
 await host.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFor();
 await guest.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFor();
 await host.getByRole('button', { name: 'Deal the cards' }).click();
-await host.locator('.player.self .hole-cards .card:not(.back)').first().waitFor();
-await guest.locator('.player.self .hole-cards .card:not(.back)').first().waitFor();
+await host.locator('.player.self .hole-cards .card.back').first().waitFor();
+await guest.locator('.player.self .hole-cards .card.back').first().waitFor();
+for (const page of [host, guest]) {
+  const rack = page.locator('#self-bankroll:not(.hidden)');
+  await rack.waitFor();
+  const rackTotal = Number((await rack.locator('#self-bankroll-total').textContent()).replace(/\D/g, ''));
+  const stackTotal = Number((await page.locator('.player.self .player-stack').textContent()).replace(/\D/g, ''));
+  if (rackTotal !== stackTotal || rackTotal <= 0) throw new Error(`Persistent personal chip total does not match stack: ${rackTotal} vs ${stackTotal}`);
+  if (await rack.locator('.bankroll-piles .chip-pile').count() < 1) throw new Error('Persistent personal chip piles are missing');
+  const pileBox = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => pile.getBoundingClientRect().toJSON());
+  if (pileBox.width > 38 || pileBox.height > 48) throw new Error(`Personal chip piles are not compact: ${JSON.stringify(pileBox)}`);
+  const rackAndToast = await page.evaluate(() => {
+    const rackRect = document.querySelector('#self-bankroll').getBoundingClientRect();
+    const toastRect = document.querySelector('#toast:not(.hidden)')?.getBoundingClientRect();
+    return { rack: rackRect.toJSON(), toast: toastRect?.toJSON() ?? null };
+  });
+  if (rackAndToast.toast && rackAndToast.toast.bottom > rackAndToast.rack.top && rackAndToast.toast.top < rackAndToast.rack.bottom) {
+    throw new Error(`Toast obscures the always-visible chip rack: ${JSON.stringify(rackAndToast)}`);
+  }
+  if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards were visible without holding reveal');
+  const reveal = page.getByRole('button', { name: 'Hold to reveal your cards' });
+  await reveal.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true });
+  if (await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Holding reveal did not show both private cards');
+  await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true });
+  if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards stayed visible after reveal was released');
+  await reveal.dispatchEvent('pointerdown', { pointerId: 2, pointerType: 'mouse', isPrimary: false, button: 2 });
+  if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Secondary pointer revealed private cards');
+  await reveal.focus();
+  await reveal.dispatchEvent('keydown', { key: ' ', code: 'Space' });
+  if (await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Keyboard hold did not reveal both private cards');
+  await page.locator('#sound-toggle').focus();
+  if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards stayed visible after reveal control lost focus');
+}
 const holeCardWidth = await host.locator('.player.self .hole-cards .card').first().evaluate((card) => card.getBoundingClientRect().width);
 if (holeCardWidth < 40) throw new Error(`Hole cards are still too small: ${holeCardWidth}px`);
-if (await host.locator('.player.self .card-center').count() !== 2) throw new Error('Full pixel card faces were not rendered');
 if (await host.locator('.bet-chip .chip-pile').count() < 2) throw new Error('Posted bets were not rendered as numbered pixel chip piles');
 if ((await host.locator('#pot strong').textContent()).trim() !== '0') throw new Error('Street bets moved into the pot before the betting round completed');
 const tableShape = await host.locator('.poker-table').evaluate((table) => {
@@ -123,7 +159,7 @@ const privacy = {
   guestOwnFaces: await guest.locator('.player.self .card:not(.back)').count(),
   guestOpponentFaces: await guest.locator('.player:not(.self) .card:not(.back)').count(),
 };
-if (privacy.hostOwnFaces !== 2 || privacy.guestOwnFaces !== 2 || privacy.hostOpponentFaces || privacy.guestOpponentFaces) {
+if (privacy.hostOwnFaces || privacy.guestOwnFaces || privacy.hostOpponentFaces || privacy.guestOpponentFaces) {
   throw new Error(`Hole-card privacy failed: ${JSON.stringify(privacy)}`);
 }
 
@@ -164,6 +200,16 @@ if (boardCardWidth < 48) throw new Error(`Community cards are still too small: $
 await host.setViewportSize({ width: 350, height: 664 });
 const narrowCardWidth = await host.locator('#board .card').first().evaluate((card) => card.getBoundingClientRect().width);
 if (narrowCardWidth < 40) throw new Error(`Cards regress on narrow phones: ${narrowCardWidth}px`);
+await host.setViewportSize({ width: 320, height: 480 });
+const compactLayout = await host.evaluate(() => {
+  const rack = document.querySelector('#self-bankroll').getBoundingClientRect();
+  const pot = document.querySelector('#pot').getBoundingClientRect();
+  const board = document.querySelector('#board').getBoundingClientRect();
+  return { scrollWidth: document.documentElement.scrollWidth, width: innerWidth, rackTop: rack.top, rackBottom: rack.bottom, rackVisible: rack.width > 0 && rack.height > 0, potBottom: pot.bottom, boardTop: board.top };
+});
+if (compactLayout.scrollWidth > compactLayout.width || !compactLayout.rackVisible || compactLayout.rackTop < 0 || compactLayout.rackBottom > 480 || compactLayout.potBottom > compactLayout.boardTop - 2) {
+  throw new Error(`Short/narrow bankroll layout failed: ${JSON.stringify(compactLayout)}`);
+}
 await host.setViewportSize({ width: 390, height: 664 });
 
 await host.screenshot({ path: new URL('table-mobile-host.png', out).pathname, fullPage: true });
@@ -181,6 +227,14 @@ const layout = await Promise.all([host, guest].map((page) => page.evaluate(() =>
 if (layout.some((entry) => entry.scrollWidth > entry.width + 1 || entry.scrollHeight > entry.height + 1)) {
   throw new Error(`Mobile viewport overflow: ${JSON.stringify(layout)}`);
 }
+for (const page of [host, guest]) {
+  const collision = await page.evaluate(() => {
+    const stack = document.querySelector('.player.self .player-stack').getBoundingClientRect();
+    const controlsRect = document.querySelector('#controls').getBoundingClientRect();
+    return { stackBottom: stack.bottom, controlsTop: controlsRect.top };
+  });
+  if (collision.stackBottom > collision.controlsTop - 2) throw new Error(`Own stack is clipped by controls: ${JSON.stringify(collision)}`);
+}
 
 await host.getByRole('button', { name: 'Open reactions' }).click();
 await host.locator('#reaction-tray button').filter({ hasText: '🔥' }).click();
@@ -195,7 +249,7 @@ for (const page of [host, guest]) {
 }
 await host.getByRole('button', { name: 'Play again' }).waitFor();
 await host.getByRole('button', { name: 'Play again' }).click();
-await host.locator('.player.self .hole-cards .card:not(.back)').first().waitFor();
+await host.locator('.player.self .hole-cards .card.back').first().waitFor();
 
 await guest.reload({ waitUntil: 'networkidle' });
 await guest.locator('#game:not(.hidden)').waitFor();

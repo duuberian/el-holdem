@@ -20,7 +20,95 @@ let stagedChips = {};
 let provisionalRack = null;
 let raiseInvoker = null;
 let actionPending = false;
+let cardsRevealed = false;
+let lastHandNumber = 0;
+let soundEnabled = localStorage.getItem('el-holdem:sound') !== 'muted';
+let audioContext = null;
 let toastTimer;
+
+let audioFailed = false;
+
+function failAudio() {
+  audioFailed = true;
+  audioContext = null;
+}
+
+function getAudioContext() {
+  if (!soundEnabled || audioFailed) return null;
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContext ??= new AudioContextClass();
+    if (audioContext.state === 'closed') {
+      failAudio();
+      return null;
+    }
+    if (audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+    return audioContext;
+  } catch {
+    failAudio();
+    return null;
+  }
+}
+
+function tone(frequency, duration, type = 'square', volume = 0.025, delay = 0) {
+  try {
+    const context = getAudioContext();
+    if (!context) return;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.value = frequency;
+    const start = context.currentTime + delay;
+    gain.gain.setValueAtTime(volume, start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + duration);
+  } catch {
+    failAudio();
+  }
+}
+
+function paperFlap() {
+  try {
+    const context = getAudioContext();
+    if (!context) return;
+    const duration = 0.16;
+    const buffer = context.createBuffer(1, context.sampleRate * duration, context.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let index = 0; index < data.length; index += 1) data[index] = (Math.random() * 2 - 1) * (1 - index / data.length);
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1350;
+    filter.Q.value = 0.8;
+    gain.gain.value = 0.035;
+    source.buffer = buffer;
+    source.connect(filter).connect(gain).connect(context.destination);
+    source.start();
+  } catch {
+    failAudio();
+  }
+}
+
+function playSound(kind) {
+  if (!soundEnabled || audioFailed) return;
+  try {
+    if (kind === 'paper') paperFlap();
+    else if (kind === 'chip') {
+      tone(980, 0.045, 'square', 0.022);
+      tone(1380, 0.035, 'square', 0.018, 0.045);
+    } else if (kind === 'check') tone(180, 0.07, 'triangle', 0.04);
+    else if (kind === 'reaction') {
+      tone(620, 0.08, 'sine', 0.025);
+      tone(900, 0.08, 'sine', 0.02, 0.07);
+    }
+  } catch {
+    failAudio();
+  }
+}
 
 const CHIP_DENOMINATIONS = [500, 100, 20, 10, 5, 1];
 const CHIP_CLASS = { 1: 'white', 5: 'red', 10: 'blue', 20: 'green', 100: 'black', 500: 'purple' };
@@ -239,6 +327,7 @@ function addStagedChip(denomination) {
   if (!self || stagedTotal() + denomination > self.stack || !makeChipAvailable(denomination)) return;
   provisionalRack[denomination] -= 1;
   stagedChips[denomination] += 1;
+  playSound('chip');
   renderStagedSelection();
 }
 
@@ -246,6 +335,7 @@ function removeStagedChip(denomination) {
   if (!stagedChips[denomination]) return;
   stagedChips[denomination] -= 1;
   provisionalRack[denomination] += 1;
+  playSound('chip');
   renderStagedSelection();
 }
 
@@ -266,6 +356,7 @@ function renderChipBank() {
     button.append(pokerChip(denomination, count));
     button.addEventListener('click', () => {
       button.disabled = true;
+      playSound('chip');
       socket.emit('exchange-chip', { denomination }, (reply) => {
         if (!reply.ok) {
           showToast(reply.error);
@@ -275,6 +366,31 @@ function renderChipBank() {
     });
     rack.append(button);
   }
+}
+
+function renderBankroll() {
+  const rack = $('#self-bankroll');
+  const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
+  rack.classList.toggle('hidden', !self);
+  if (!self) return;
+  $('#self-bankroll-total').textContent = self.stack.toLocaleString();
+  const piles = $('#bankroll-piles');
+  piles.replaceChildren();
+  for (const denomination of CHIP_DENOMINATIONS) {
+    const count = self.chips?.[denomination] ?? 0;
+    if (!count) continue;
+    const pile = chipPile(denomination, count);
+    pile.classList.add('bankroll-pile');
+    piles.append(pile);
+  }
+  const reveal = $('#reveal-cards');
+  reveal.classList.toggle('hidden', !self.hand.length);
+  reveal.classList.toggle('revealing', cardsRevealed);
+  reveal.setAttribute('aria-pressed', String(cardsRevealed));
+  const line = document.createTextNode(cardsRevealed ? 'SHOWING' : 'HOLD');
+  const strong = document.createElement('strong');
+  strong.textContent = 'CARDS';
+  reveal.replaceChildren(line, document.createElement('br'), strong);
 }
 
 function renderRaiseChips() {
@@ -339,7 +455,7 @@ function playerElement(player, self, position) {
 
   const cards = document.createElement('div');
   cards.className = 'hole-cards';
-  if (player.hand.length) player.hand.forEach((card) => cards.append(cardElement(card)));
+  if (player.hand.length) player.hand.forEach((card) => cards.append(cardElement(card, self && !cardsRevealed)));
   else if (player.cardCount) Array.from({ length: player.cardCount }, () => cards.append(cardElement('', true)));
   avatar.append(cards);
 
@@ -396,6 +512,7 @@ function setActionBusy(busy) {
 function sendAction(type, amount) {
   if (actionPending) return;
   actionPending = true;
+  playSound(type === 'fold' ? 'paper' : type === 'check' ? 'check' : 'chip');
   setActionBusy(true);
   closeRaisePanel();
   let settled = false;
@@ -527,6 +644,7 @@ function render() {
   $('#phase').textContent = snapshot.state.phase === 'waiting' ? 'TABLE OPEN' : snapshot.state.phase.toUpperCase();
   const board = $('#board');
   board.replaceChildren(...snapshot.state.community.map((card) => cardElement(card)));
+  renderBankroll();
   renderPlayers();
   renderChipBank();
   renderLobby();
@@ -538,15 +656,71 @@ function render() {
 }
 
 socket.on('state', (data) => {
+  if (data.state.handNumber > lastHandNumber) {
+    cardsRevealed = false;
+    playSound('paper');
+  }
+  lastHandNumber = data.state.handNumber;
   snapshot = data;
   activeCode = data.roomCode;
   enterGame();
   render();
 });
 
-$('#deal').addEventListener('click', () => socket.emit('start-hand', {}, (reply) => {
+function setCardsRevealed(visible) {
+  const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
+  const next = Boolean(visible && self?.hand.length);
+  if (cardsRevealed === next) return;
+  cardsRevealed = next;
+  if (next) playSound('paper');
+  renderBankroll();
+  renderPlayers();
+}
+
+const revealCards = $('#reveal-cards');
+let revealPointerId = null;
+let revealKey = null;
+
+function concealCards() {
+  revealPointerId = null;
+  revealKey = null;
+  setCardsRevealed(false);
+}
+
+revealCards.addEventListener('pointerdown', (event) => {
+  if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  event.preventDefault();
+  revealPointerId = event.pointerId;
+  try { revealCards.setPointerCapture(event.pointerId); } catch { /* Synthetic and legacy events may not be capturable. */ }
+  setCardsRevealed(true);
+});
+document.addEventListener('pointerup', (event) => {
+  if (revealPointerId === null || event.pointerId === revealPointerId) concealCards();
+});
+document.addEventListener('pointercancel', (event) => {
+  if (revealPointerId === null || event.pointerId === revealPointerId) concealCards();
+});
+revealCards.addEventListener('lostpointercapture', concealCards);
+revealCards.addEventListener('blur', concealCards);
+window.addEventListener('blur', concealCards);
+document.addEventListener('visibilitychange', () => { if (document.hidden) concealCards(); });
+revealCards.addEventListener('keydown', (event) => {
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
+    revealKey = event.key;
+    setCardsRevealed(true);
+  }
+});
+document.addEventListener('keyup', (event) => {
+  if (event.key === revealKey) concealCards();
+});
+revealCards.addEventListener('contextmenu', (event) => event.preventDefault());
+
+$('#deal').addEventListener('click', () => {
+  socket.emit('start-hand', {}, (reply) => {
   if (!reply.ok) showToast(reply.error);
-}));
+  });
+});
 
 $('#apply-starting-stack').addEventListener('click', () => {
   const startingStack = Number($('#lobby-starting-stack').value);
@@ -570,6 +744,7 @@ async function shareRoom() {
 $('#share').addEventListener('click', shareRoom);
 $('#lobby-share').addEventListener('click', shareRoom);
 $('#chip-bank-button').addEventListener('click', () => {
+  playSound('chip');
   closeRaisePanel();
   reactionTray.classList.add('hidden');
   $('#chip-bank').classList.toggle('hidden');
@@ -584,6 +759,7 @@ reactionTray.addEventListener('click', (event) => {
 });
 
 socket.on('reaction', ({ playerId, name, emoji }) => {
+  playSound('reaction');
   const player = document.querySelector(`[data-player-id="${CSS.escape(playerId)}"]`);
   if (player) {
     const bubble = document.createElement('div');
@@ -595,7 +771,23 @@ socket.on('reaction', ({ playerId, name, emoji }) => {
   showToast(`${name} reacted ${emoji}`, 1500);
 });
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+function renderSoundToggle() {
+  const button = $('#sound-toggle');
+  button.textContent = soundEnabled ? 'SFX' : 'OFF';
+  button.setAttribute('aria-pressed', String(!soundEnabled));
+  button.setAttribute('aria-label', 'Mute game sounds');
+}
+
+$('#sound-toggle').addEventListener('click', () => {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('el-holdem:sound', soundEnabled ? 'on' : 'muted');
+  renderSoundToggle();
+  if (soundEnabled) playSound('reaction');
+});
+document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
+renderSoundToggle();
+
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=8'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;
