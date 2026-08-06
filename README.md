@@ -11,8 +11,11 @@ A mobile-first, private Texas Hold’em table for 2–8 family members on separa
 - Live private rooms with explicit **Host a party** / **Join a party** flows and six-character invite codes
 - Server-authoritative 52-card deck; duplicate-card invariants are tested
 - 2–8 players, blinds, fold/check/call/raise/all-in, community streets, side pots, and showdown hand evaluation
-- Intuitive raise panel with minimum, half-pot, full-pot, and all-in presets plus final confirmation
-- Original retro pixel-casino styling with chunky, readable cards and controls
+- Physical virtual-chip betting with numbered denominations, automatic exact change, and a manual chip bank
+- Intuitive raise panel with tappable chips, minimum, half-pot, full-pot, and all-in presets plus final confirmation
+- Animated chips travel from the player to the pot when calling, raising, or going all-in
+- Enlarged, fully pixel-styled card faces and backs
+- A clear **Play again** control after each hand
 - Hole cards visible only to their owner until showdown
 - One-tap emoji reactions
 - Mobile-first responsive table and installable PWA shell

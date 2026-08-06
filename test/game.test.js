@@ -4,10 +4,12 @@ import {
   ACTIONS,
   createDeck,
   createGame,
+  exchangePlayerChip,
   publicState,
   startHand,
   act,
 } from '../server/game.js';
+import { chipRackValue } from '../server/chips.js';
 
 function gameWithPlayers(count = 4, stack = 1000) {
   const game = createGame({ smallBlind: 10, bigBlind: 20 });
@@ -20,6 +22,12 @@ function gameWithPlayers(count = 4, stack = 1000) {
     });
   }
   return game;
+}
+
+function assertChipBacked(game) {
+  for (const player of game.players) {
+    assert.equal(chipRackValue(player.chips), player.stack);
+  }
 }
 
 describe('server-authoritative deck', () => {
@@ -60,6 +68,7 @@ describe('betting flow', () => {
     }
     assert.equal(game.phase, 'flop');
     assert.equal(game.community.length, 3);
+    assertChipBacked(game);
   });
 
   it('awards the pot immediately when everyone else folds', () => {
@@ -78,6 +87,7 @@ describe('betting flow', () => {
     }
     assert.equal(game.phase, 'waiting');
     assert.ok(game.players.find((p) => p.id === survivor).stack > before);
+    assertChipBacked(game);
   });
 
   it('rejects actions from a player whose turn it is not', () => {
@@ -85,5 +95,29 @@ describe('betting flow', () => {
     startHand(game, () => 0.61);
     const wrong = game.players.find((p) => p.id !== game.currentActor);
     assert.throws(() => act(game, wrong.id, { type: ACTIONS.FOLD }), /turn/i);
+  });
+});
+
+describe('chip-backed betting', () => {
+  it('keeps each chip rack equal to the authoritative stack while betting', () => {
+    const game = gameWithPlayers(3);
+    startHand(game, () => 0.31);
+    assertChipBacked(game);
+
+    const actor = game.players.find((player) => player.id === game.currentActor);
+    const toCall = game.currentBet - actor.bet;
+    act(game, actor.id, toCall ? { type: ACTIONS.CALL } : { type: ACTIONS.CHECK });
+    assertChipBacked(game);
+  });
+
+  it('lets a player make value-preserving change and publishes the rack', () => {
+    const game = gameWithPlayers(3);
+    startHand(game, () => 0.31);
+    const player = game.players[0];
+    exchangePlayerChip(game, player.id, 500);
+    assert.equal(player.chips[500], 1);
+    assert.equal(player.chips[100], 5);
+    assert.equal(chipRackValue(player.chips), player.stack);
+    assert.deepEqual(publicState(game, player.id).players[0].chips, player.chips);
   });
 });

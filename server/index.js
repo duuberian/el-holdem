@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { ACTIONS, act, publicState, startHand } from './game.js';
+import { ACTIONS, act, exchangePlayerChip, publicState, startHand } from './game.js';
 import { createRoomStore } from './rooms.js';
 import {
   cacheControlForPath,
@@ -149,6 +149,20 @@ io.on('connection', (socket) => {
         const type = String(payload.type ?? '');
         if (!Object.values(ACTIONS).includes(type)) throw new Error('Invalid action');
         act(room.game, player.id, { type, amount: payload.amount });
+        emitRoom(room);
+        ack({ ok: true });
+      } catch (error) {
+        ack({ ok: false, error: errorMessage(error) });
+      }
+    }, ack);
+  });
+
+  socket.on('exchange-chip', (payload = {}, ack = () => {}) => {
+    ack = safeAck(ack);
+    if (!allowEvent(socket, ack)) return;
+    withMembership(socket, ({ room, player }) => {
+      try {
+        exchangePlayerChip(room.game, player.id, payload.denomination);
         emitRoom(room);
         ack({ ok: true });
       } catch (error) {

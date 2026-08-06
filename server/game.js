@@ -1,4 +1,5 @@
 import pokerSolver from 'pokersolver';
+import { addChips, createChipRack, exchangeChip, spendChips } from './chips.js';
 
 const { Hand } = pokerSolver;
 const SUITS = ['s', 'h', 'd', 'c'];
@@ -57,8 +58,19 @@ function nextIndex(game, fromIndex, predicate) {
   return -1;
 }
 
+function ensureChipRack(player) {
+  if (!player.chips) player.chips = createChipRack(player.stack);
+  return player.chips;
+}
+
+function creditChips(player, amount) {
+  player.chips = addChips(ensureChipRack(player), amount);
+  player.stack += amount;
+}
+
 function commitChips(game, player, amount) {
   const chips = Math.max(0, Math.min(player.stack, amount));
+  player.chips = spendChips(ensureChipRack(player), chips);
   player.stack -= chips;
   player.bet += chips;
   player.totalBet += chips;
@@ -94,6 +106,7 @@ export function startHand(game, random = Math.random) {
   game.showdown = false;
 
   for (const player of game.players) {
+    ensureChipRack(player);
     player.hand = [];
     player.bet = 0;
     player.totalBet = 0;
@@ -140,7 +153,7 @@ function actionable(player) {
 
 function finishUncontested(game, winner) {
   const won = game.pot;
-  winner.stack += won;
+  creditChips(winner, won);
   game.result = { type: 'uncontested', winners: [{ id: winner.id, amount: won }], text: `${winner.name} wins ${won}` };
   finishHand(game);
 }
@@ -216,7 +229,7 @@ function distributeSidePots(game) {
     for (const winner of winners) {
       const payout = share + (remainder > 0 ? 1 : 0);
       remainder -= remainder > 0 ? 1 : 0;
-      winner.stack += payout;
+      creditChips(winner, payout);
       payouts.set(winner.id, (payouts.get(winner.id) ?? 0) + payout);
     }
   }
@@ -230,6 +243,13 @@ function showdown(game) {
   const names = winners.map(({ id }) => game.players.find((player) => player.id === id)?.name).join(' & ');
   game.result = { type: 'showdown', winners, text: `${names} win${winners.length === 1 ? 's' : ''} the pot` };
   finishHand(game);
+}
+
+export function exchangePlayerChip(game, playerId, denomination) {
+  const player = game.players.find((candidate) => candidate.id === playerId);
+  if (!player) throw new Error('Player not found');
+  player.chips = exchangeChip(ensureChipRack(player), denomination);
+  return player.chips;
 }
 
 export function act(game, playerId, action) {
@@ -327,6 +347,7 @@ export function publicState(game, viewerId) {
       seat,
       name: player.name,
       stack: player.stack,
+      chips: { ...(player.chips ?? createChipRack(player.stack)) },
       bet: player.bet ?? 0,
       folded: player.folded ?? false,
       allIn: player.allIn ?? false,

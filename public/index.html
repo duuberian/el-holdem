@@ -39,6 +39,7 @@
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
+        <button id="chip-bank-button" class="chip-bank-button" aria-label="Open chip bank"><span class="mini-chip">20</span></button>
         <button id="share" class="room-pill" aria-label="Copy room invite"><span id="room-code"></span><span class="copy-icon">⌁</span></button>
         <div id="connection" class="connection"><i></i><span>Live</span></div>
       </header>
@@ -67,6 +68,16 @@
         <p id="host-note" class="host-note">Waiting for the host to deal…</p>
       </aside>
 
+      <section id="chip-bank" class="chip-bank hidden" aria-label="Your chip bank">
+        <div class="chip-bank-heading">
+          <div><span>YOUR CHIP BANK</span><strong id="chip-bank-total">1,000</strong></div>
+          <button id="chip-bank-close" aria-label="Close chip bank">×</button>
+        </div>
+        <p>Tap a chip to change it into smaller chips of equal value.</p>
+        <div id="chip-bank-rack" class="chip-bank-rack"></div>
+        <div class="chip-bank-note"><span>♻</span> The dealer automatically makes exact change when you bet.</div>
+      </section>
+
       <div id="reaction-tray" class="reaction-tray hidden" role="toolbar" aria-label="Send a reaction">
         <button>😂</button><button>🔥</button><button>😮</button><button>👏</button>
         <button>😭</button><button>🤔</button><button>❤️</button><button>🫡</button>
@@ -78,6 +89,8 @@
           <button id="raise-cancel" aria-label="Cancel raise">×</button>
         </div>
         <input id="raise-slider" type="range" aria-label="Raise amount">
+        <div class="raise-chip-label"><span>ADD CHIPS</span><button id="raise-chip-reset" type="button">RESET</button></div>
+        <div id="raise-chips" class="raise-chips" aria-label="Add chips to raise"></div>
         <div class="raise-presets">
           <button data-preset="min" aria-label="Minimum">MIN</button>
           <button data-preset="half" aria-label="Half pot">½ POT</button>
