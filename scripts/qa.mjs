@@ -30,7 +30,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v0.9' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.0' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 if (!/^[A-Z0-9]{6}$/.test(roomCode)) throw new Error(`Unexpected room code: ${roomCode}`);
 
@@ -80,12 +80,34 @@ for (const page of [host, guest]) {
     throw new Error(`Toast obscures the always-visible chip rack: ${JSON.stringify(rackAndToast)}`);
   }
   if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards were visible without holding reveal');
-  const reveal = page.getByRole('button', { name: 'Hold to reveal your cards' });
+  const reveal = page.getByRole('button', { name: 'Drag down to reveal your cards' });
+  const revealMount = await reveal.evaluate((button) => ({
+    onPlayer: Boolean(button.closest('.player.self')),
+    width: button.getBoundingClientRect().width,
+    height: button.getBoundingClientRect().height,
+    clipPath: getComputedStyle(button).clipPath,
+  }));
+  if (!revealMount.onPlayer || Math.abs(revealMount.width - revealMount.height) > 1 || revealMount.clipPath === 'none') throw new Error(`Reveal control is not a pixel-round player control: ${JSON.stringify(revealMount)}`);
+  const cardBefore = await page.locator('.player.self .hole-cards .card').first().boundingBox();
   const revealBox = await reveal.boundingBox();
   await reveal.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 10 });
   await reveal.dispatchEvent('pointermove', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
+  await page.waitForTimeout(90);
   const dragProgress = await page.locator('#game').evaluate((game) => Number(game.style.getPropertyValue('--reveal-drag')));
   if (dragProgress <= 0 || await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Dragging reveal down did not fluidly show both private cards');
+  const cardAfter = await page.locator('.player.self .hole-cards .card').first().boundingBox();
+  const revealAfter = await reveal.boundingBox();
+  const revealOverlap = await page.locator('.player.self').evaluate((player) => {
+    const button = player.querySelector('.reveal-cards').getBoundingClientRect();
+    return [...player.querySelectorAll('.hole-cards .card')].reduce((area, card) => {
+      const rect = card.getBoundingClientRect();
+      return area + Math.max(0, Math.min(button.right, rect.right) - Math.max(button.left, rect.left)) * Math.max(0, Math.min(button.bottom, rect.bottom) - Math.max(button.top, rect.top));
+    }, 0) / (button.width * button.height);
+  });
+  const cardTravel = cardAfter.y - cardBefore.y;
+  const buttonTravel = revealAfter.y - revealBox.y;
+  if (cardTravel < 25 || buttonTravel < 25 || Math.abs(cardTravel - buttonTravel) > 4 || cardAfter.y < 0 || cardAfter.y + cardAfter.height > 664 || revealOverlap > 0.25) throw new Error(`Cards did not follow the pull control fully in view: ${JSON.stringify({ cardBefore, cardAfter, revealBox, revealAfter, revealOverlap })}`);
+  if (page === host) await page.screenshot({ path: new URL('cards-reveal-mobile.png', out).pathname, fullPage: true });
   await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
   if (await page.locator('.player.self .card:not(.back)').count() || await page.locator('#game').evaluate((game) => Number(game.style.getPropertyValue('--reveal-drag')))) throw new Error('Private cards stayed visible after reveal was released');
   await reveal.dispatchEvent('pointerdown', { pointerId: 2, pointerType: 'mouse', isPrimary: false, button: 2 });

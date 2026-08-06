@@ -257,7 +257,10 @@ function initials(name) {
 function pokerChip(denomination, count, compact = false) {
   const chip = document.createElement('span');
   chip.className = `poker-chip chip-${CHIP_CLASS[denomination]}${compact ? ' compact' : ''}`;
-  chip.textContent = denomination.toLocaleString();
+  const value = document.createElement('span');
+  value.className = 'chip-value';
+  value.textContent = denomination.toLocaleString();
+  chip.append(value);
   chip.dataset.denomination = denomination;
   if (count !== undefined) {
     const tally = document.createElement('span');
@@ -441,10 +444,11 @@ function renderBankroll() {
   reveal.classList.toggle('hidden', !self.hand.length);
   reveal.classList.toggle('revealing', cardsRevealed);
   reveal.setAttribute('aria-pressed', String(cardsRevealed));
-  const line = document.createTextNode(cardsRevealed ? 'SHOWING' : 'HOLD');
+  const line = document.createElement('span');
+  line.textContent = cardsRevealed ? 'OPEN' : 'PULL';
   const strong = document.createElement('strong');
-  strong.textContent = 'CARDS';
-  reveal.replaceChildren(line, document.createElement('br'), strong);
+  strong.textContent = '↓';
+  reveal.replaceChildren(line, strong);
 }
 
 function renderRaiseChips() {
@@ -511,7 +515,7 @@ function playerElement(player, self, position) {
   cards.className = 'hole-cards';
   if (player.hand.length) player.hand.forEach((card) => cards.append(cardElement(card, self && !cardsRevealed)));
   else if (player.cardCount) Array.from({ length: player.cardCount }, () => cards.append(cardElement('', true)));
-  avatar.append(cards);
+  if (!self) avatar.append(cards);
 
   const name = document.createElement('div');
   name.className = 'player-name';
@@ -520,6 +524,7 @@ function playerElement(player, self, position) {
   stack.className = 'player-stack';
   stack.textContent = `STACK ${player.stack.toLocaleString()}${player.allIn ? ' · ALL IN' : ''}`;
   node.append(avatar, name, stack);
+  if (self) node.append(cards, revealCards);
   if (player.bet > 0) {
     const bet = document.createElement('div');
     bet.className = 'bet-chip';
@@ -739,7 +744,8 @@ function setCardsRevealed(visible) {
   cardsRevealed = next;
   if (next) playSound('paper');
   renderBankroll();
-  renderPlayers();
+  const holeCards = document.querySelector('.player.self .hole-cards');
+  if (holeCards) holeCards.replaceChildren(...self.hand.map((card) => cardElement(card, !next)));
 }
 
 const revealCards = $('#reveal-cards');
@@ -750,10 +756,10 @@ let revealKey = null;
 function setRevealDrag(progress) {
   const clamped = Math.max(0, Math.min(1, progress));
   gameScreen.style.setProperty('--reveal-drag', String(clamped));
-  gameScreen.style.setProperty('--reveal-offset', `${clamped * 18}px`);
+  gameScreen.style.setProperty('--reveal-offset', `${clamped * 42}px`);
   gameScreen.style.setProperty('--reveal-tilt', `${clamped * -2}deg`);
   revealCards.style.setProperty('--reveal-drag', String(clamped));
-  revealCards.style.setProperty('--reveal-button-offset', `${clamped * 7}px`);
+  revealCards.style.setProperty('--reveal-button-offset', `${clamped * 42}px`);
   if (revealPointerId !== null) setCardsRevealed(clamped >= 0.16);
 }
 
@@ -872,7 +878,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=9'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=10'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;
