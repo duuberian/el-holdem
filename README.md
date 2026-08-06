@@ -2,6 +2,8 @@
 
 A mobile-first, private Texas Hold’em table for 2–8 family members on separate devices. The Node server owns the room, shuffled deck, hidden cards, turn order, bets, side pots, and showdown; browsers only receive the state they are allowed to see.
 
+**Play:** https://poker.178.156.221.203.sslip.io
+
 **Source:** https://github.com/duuberian/railway-holdem
 
 ## Features
