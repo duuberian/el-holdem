@@ -1,0 +1,10 @@
+{
+  "name": "Railway Hold’em",
+  "short_name": "Hold’em",
+  "description": "Private live Texas Hold'em for family and friends",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0920",
+  "theme_color": "#16122d",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

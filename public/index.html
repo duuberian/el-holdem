@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#16122d">
+  <meta name="description" content="Private, live Texas Hold'em for family and friends.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <title>Railway Hold’em</title>
+</head>
+<body>
+  <main id="app">
+    <section id="welcome" class="welcome">
+      <div class="brand"><span class="brand-mark">♠</span><span>Railway Hold’em</span></div>
+      <div class="hero-copy">
+        <p class="eyebrow">PRIVATE PARTY · LIVE PLAY</p>
+        <h1>POKER<br><em>ON THE GO</em></h1>
+        <p class="lede">A fast private Texas Hold’em table built for phones. No accounts, no adverts, no duplicate cards.</p>
+      </div>
+      <form id="join-form" class="join-card">
+        <div class="party-switch" role="group" aria-label="Choose party mode">
+          <button id="mode-join" class="party-mode active" type="button">Join a party</button>
+          <button id="mode-host" class="party-mode" type="button">Host a party</button>
+        </div>
+        <label for="name">Your name</label>
+        <input id="name" name="name" maxlength="18" autocomplete="nickname" placeholder="e.g. Daniel" required>
+        <div id="room-field" class="room-field">
+          <label for="room">Room code</label>
+          <input id="room" name="room" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC123">
+        </div>
+        <p id="form-error" class="error" role="alert"></p>
+        <button id="party-button" class="button primary" type="submit">Join party</button>
+      </form>
+      <p class="privacy">Server-shuffled deck · Play-money only · Up to 8 players</p>
+    </section>
+
+    <section id="game" class="game hidden" aria-live="polite">
+      <header class="game-header">
+        <div class="mini-brand"><span>♠</span> RAILWAY</div>
+        <button id="share" class="room-pill" aria-label="Copy room invite"><span id="room-code"></span><span class="copy-icon">⌁</span></button>
+        <div id="connection" class="connection"><i></i><span>Live</span></div>
+      </header>
+
+      <div id="table-wrap" class="table-wrap">
+        <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+        <div class="poker-table">
+          <div class="table-rail"></div>
+          <div class="felt-mark">RH <span>♠</span></div>
+          <div id="pot" class="pot">POT <strong>0</strong></div>
+          <div id="board" class="board"></div>
+          <div id="phase" class="phase">WAITING FOR PLAYERS</div>
+        </div>
+        <div id="players" class="players"></div>
+        <div id="result" class="result hidden"></div>
+      </div>
+
+      <aside id="lobby" class="lobby-panel">
+        <div>
+          <p class="eyebrow">THE TABLE IS OPEN</p>
+          <h2>Bring the family in.</h2>
+          <p>Share the code. Two players are enough to deal.</p>
+        </div>
+        <button id="lobby-share" class="button secondary">Copy invite link</button>
+        <button id="deal" class="button primary hidden">Deal the cards</button>
+        <p id="host-note" class="host-note">Waiting for the host to deal…</p>
+      </aside>
+
+      <div id="reaction-tray" class="reaction-tray hidden" role="toolbar" aria-label="Send a reaction">
+        <button>😂</button><button>🔥</button><button>😮</button><button>👏</button>
+        <button>😭</button><button>🤔</button><button>❤️</button><button>🫡</button>
+      </div>
+
+      <section id="raise-panel" class="raise-panel hidden" aria-label="Choose raise amount">
+        <div class="raise-heading">
+          <div><span>RAISE TO</span><strong id="raise-amount">40</strong></div>
+          <button id="raise-cancel" aria-label="Cancel raise">×</button>
+        </div>
+        <input id="raise-slider" type="range" aria-label="Raise amount">
+        <div class="raise-presets">
+          <button data-preset="min" aria-label="Minimum">MIN</button>
+          <button data-preset="half" aria-label="Half pot">½ POT</button>
+          <button data-preset="pot" aria-label="Full pot">POT</button>
+          <button data-preset="allin" aria-label="All in">ALL IN</button>
+        </div>
+        <button id="raise-confirm" class="button raise-confirm">CONFIRM RAISE</button>
+      </section>
+
+      <footer id="controls" class="controls hidden">
+        <button id="react-button" class="round-button" aria-label="Open reactions">☺</button>
+        <div id="action-buttons" class="action-buttons"></div>
+      </footer>
+      <div id="toast" class="toast hidden" role="status"></div>
+    </section>
+  </main>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/client.js"></script>
+</body>
+</html>
