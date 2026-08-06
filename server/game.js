@@ -5,6 +5,14 @@ const { Hand } = pokerSolver;
 const SUITS = ['s', 'h', 'd', 'c'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 
+function validStartingStack(value = 1000) {
+  const amount = Number(value);
+  if (!Number.isInteger(amount) || amount < 100 || amount > 100_000) {
+    throw new Error('Starting chips must be between 100 and 100,000');
+  }
+  return amount;
+}
+
 export const ACTIONS = Object.freeze({
   FOLD: 'fold',
   CHECK: 'check',
@@ -25,6 +33,7 @@ export function createDeck(random = Math.random) {
 export function createGame(options = {}) {
   return {
     players: [],
+    startingStack: validStartingStack(options.startingStack),
     smallBlind: options.smallBlind ?? 10,
     bigBlind: options.bigBlind ?? 20,
     phase: 'waiting',
@@ -61,6 +70,19 @@ function nextIndex(game, fromIndex, predicate) {
 function ensureChipRack(player) {
   if (!player.chips) player.chips = createChipRack(player.stack);
   return player.chips;
+}
+
+export function setStartingStack(game, value) {
+  if (game.phase !== 'waiting' || game.handNumber !== 0) {
+    throw new Error('Starting chips can only change before the first hand');
+  }
+  const amount = validStartingStack(value);
+  game.startingStack = amount;
+  for (const player of game.players) {
+    player.stack = amount;
+    player.chips = createChipRack(amount);
+  }
+  return amount;
 }
 
 function creditChips(player, amount) {
@@ -333,11 +355,13 @@ export function publicState(game, viewerId) {
   return {
     smallBlind: game.smallBlind,
     bigBlind: game.bigBlind,
+    startingStack: game.startingStack,
     phase: game.phase,
     handNumber: game.handNumber,
     dealerIndex: game.dealerIndex,
     community: [...game.community],
     pot: game.pot,
+    tablePot: Math.max(0, game.pot - game.players.reduce((total, player) => total + (player.bet ?? 0), 0)),
     currentBet: game.currentBet,
     minRaise: game.minRaise,
     currentActor: game.currentActor,

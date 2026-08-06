@@ -6,6 +6,7 @@ import {
   createGame,
   exchangePlayerChip,
   publicState,
+  setStartingStack,
   startHand,
   act,
 } from '../server/game.js';
@@ -57,10 +58,30 @@ describe('private state', () => {
   });
 });
 
+describe('host table setup', () => {
+  it('changes every seated player to the host starting stack before the first hand', () => {
+    const game = gameWithPlayers(3);
+    setStartingStack(game, 2500);
+    assert.equal(game.startingStack, 2500);
+    for (const player of game.players) {
+      assert.equal(player.stack, 2500);
+      assert.equal(chipRackValue(player.chips), 2500);
+    }
+  });
+
+  it('rejects unsafe stacks and changes after play begins', () => {
+    const game = gameWithPlayers(2);
+    assert.throws(() => setStartingStack(game, 99), /between 100 and 100,000/);
+    startHand(game, () => 0.41);
+    assert.throws(() => setStartingStack(game, 2000), /before the first hand/);
+  });
+});
+
 describe('betting flow', () => {
   it('moves from preflop to flop after every live player matches the bet', () => {
     const game = gameWithPlayers(3);
     startHand(game, () => 0.19);
+    assert.equal(publicState(game, game.players[0].id).tablePot, 0);
     while (game.phase === 'preflop') {
       const player = game.players.find((p) => p.id === game.currentActor);
       const toCall = game.currentBet - player.bet;
@@ -68,6 +89,7 @@ describe('betting flow', () => {
     }
     assert.equal(game.phase, 'flop');
     assert.equal(game.community.length, 3);
+    assert.equal(publicState(game, game.players[0].id).tablePot, game.pot);
     assertChipBacked(game);
   });
 

@@ -30,6 +30,10 @@
           <label for="room">Room code</label>
           <input id="room" name="room" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="ABC123">
         </div>
+        <div id="starting-stack-field" class="starting-stack-field hidden">
+          <label for="starting-stack">Starting chips per player</label>
+          <input id="starting-stack" name="startingStack" type="number" min="100" max="100000" step="100" value="1000" inputmode="numeric">
+        </div>
         <p id="form-error" class="error" role="alert"></p>
         <button id="party-button" class="button primary" type="submit">Join party</button>
       </form>
@@ -49,8 +53,14 @@
         <div class="poker-table">
           <div class="table-rail"></div>
           <div class="felt-mark">EL <span>♠</span></div>
-          <div id="pot" class="pot">POT <strong>0</strong></div>
+          <div id="pot" class="pot"><span>POT</span><div id="pot-chips" class="pot-chips"></div><strong>0</strong></div>
           <div id="board" class="board"></div>
+          <section id="staged-bet" class="staged-bet hidden" aria-label="Chips selected for raise">
+            <span class="staged-label">YOUR RAISE</span>
+            <div id="staged-piles" class="staged-piles"></div>
+            <div class="staged-total-line">PUT IN <strong id="staged-total">0</strong></div>
+            <div class="staged-target-line">RAISE TO <strong id="staged-target">0</strong></div>
+          </section>
           <div id="phase" class="phase">WAITING FOR PLAYERS</div>
         </div>
         <div id="players" class="players"></div>
@@ -64,6 +74,10 @@
           <p>Share the code. Two players are enough to deal.</p>
         </div>
         <button id="lobby-share" class="button secondary">Copy invite link</button>
+        <div id="host-stack-control" class="host-stack-control hidden">
+          <label for="lobby-starting-stack">Table starting chips</label>
+          <div><input id="lobby-starting-stack" type="number" min="100" max="100000" step="100" inputmode="numeric"><button id="apply-starting-stack" aria-label="Apply starting chips">SET</button></div>
+        </div>
         <button id="deal" class="button primary hidden">Deal the cards</button>
         <p id="host-note" class="host-note">Waiting for the host to deal…</p>
       </aside>
@@ -83,21 +97,18 @@
         <button>😭</button><button>🤔</button><button>❤️</button><button>🫡</button>
       </div>
 
-      <section id="raise-panel" class="raise-panel hidden" aria-label="Choose raise amount">
+      <section id="raise-panel" class="raise-panel hidden" role="dialog" aria-modal="true" aria-label="Arrange raise chips" aria-describedby="raise-help">
         <div class="raise-heading">
-          <div><span>RAISE TO</span><strong id="raise-amount">40</strong></div>
+          <div><span>BUILD YOUR BET</span><strong>CHOOSE CHIPS</strong></div>
           <button id="raise-cancel" aria-label="Cancel raise">×</button>
         </div>
-        <input id="raise-slider" type="range" aria-label="Raise amount">
-        <div class="raise-chip-label"><span>ADD CHIPS</span><button id="raise-chip-reset" type="button">RESET</button></div>
+        <p id="raise-help" class="raise-help">Tap a chip to add one. Tap a pile on the table to take one back.</p>
         <div id="raise-chips" class="raise-chips" aria-label="Add chips to raise"></div>
-        <div class="raise-presets">
-          <button data-preset="min" aria-label="Minimum">MIN</button>
-          <button data-preset="half" aria-label="Half pot">½ POT</button>
-          <button data-preset="pot" aria-label="Full pot">POT</button>
-          <button data-preset="allin" aria-label="All in">ALL IN</button>
+        <div class="raise-mode-actions">
+          <button id="staged-fold" class="pixel-action danger">FOLD</button>
+          <button id="staged-check" class="pixel-action">CHECK</button>
+          <button id="raise-confirm" class="pixel-action confirm" aria-label="Confirm staged raise">✓</button>
         </div>
-        <button id="raise-confirm" class="button raise-confirm">CONFIRM RAISE</button>
       </section>
 
       <footer id="controls" class="controls hidden">

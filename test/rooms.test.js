@@ -11,6 +11,15 @@ describe('room store', () => {
     assert.equal(joined.player.stack, 1000);
   });
 
+  it('uses the host-selected starting stack for every new player', () => {
+    const rooms = createRoomStore(() => 'ABC123');
+    const hosted = rooms.create({ name: 'Daniel', socketId: 's1', startingStack: 2500 });
+    const joined = rooms.join({ code: 'ABC123', name: 'Family', socketId: 's2' });
+    assert.equal(hosted.room.game.startingStack, 2500);
+    assert.equal(hosted.player.stack, 2500);
+    assert.equal(joined.player.stack, 2500);
+  });
+
   it('lets a token reconnect to the same seat without adding a player', () => {
     const rooms = createRoomStore(() => 'ABC123');
     const first = rooms.create({ name: 'Daniel', socketId: 's1' });

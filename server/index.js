@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { ACTIONS, act, exchangePlayerChip, publicState, startHand } from './game.js';
+import { ACTIONS, act, exchangePlayerChip, publicState, setStartingStack, startHand } from './game.js';
 import { createRoomStore } from './rooms.js';
 import {
   cacheControlForPath,
@@ -99,7 +99,7 @@ io.on('connection', (socket) => {
     ack = safeAck(ack);
     if (!allowEvent(socket, ack, true)) return;
     try {
-      const { room, player } = rooms.create({ name: payload.name, socketId: socket.id });
+      const { room, player } = rooms.create({ name: payload.name, startingStack: payload.startingStack, socketId: socket.id });
       socket.join(room.code);
       ack({ ok: true, code: room.code, token: player.token });
       emitRoom(room);
@@ -124,6 +124,21 @@ io.on('connection', (socket) => {
     } catch (error) {
       ack({ ok: false, error: errorMessage(error) });
     }
+  });
+
+  socket.on('set-starting-stack', (payload = {}, ack = () => {}) => {
+    ack = safeAck(ack);
+    if (!allowEvent(socket, ack)) return;
+    withMembership(socket, ({ room, player }) => {
+      try {
+        if (!player.isHost) throw new Error('Only the host can change starting chips');
+        const startingStack = setStartingStack(room.game, payload.startingStack);
+        emitRoom(room);
+        ack({ ok: true, startingStack });
+      } catch (error) {
+        ack({ ok: false, error: errorMessage(error) });
+      }
+    }, ack);
   });
 
   socket.on('start-hand', (_payload, ack = () => {}) => {

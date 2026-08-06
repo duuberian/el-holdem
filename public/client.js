@@ -16,6 +16,9 @@ let activeCode = '';
 let reconnecting = false;
 let partyMode = 'join';
 let raiseBounds = null;
+let stagedChips = {};
+let provisionalRack = null;
+let raiseInvoker = null;
 let actionPending = false;
 let toastTimer;
 
@@ -75,6 +78,7 @@ function setPartyMode(mode) {
   $('#mode-join').classList.toggle('active', joining);
   $('#mode-host').classList.toggle('active', !joining);
   $('#room-field').classList.toggle('hidden', !joining);
+  $('#starting-stack-field').classList.toggle('hidden', joining);
   $('#party-button').textContent = joining ? 'Join party' : 'Create party';
   errorBox.textContent = '';
 }
@@ -96,7 +100,7 @@ form.addEventListener('submit', (event) => {
     return;
   }
   setBusy(true);
-  socket.emit('create-room', { name }, (reply) => {
+  socket.emit('create-room', { name, startingStack: Number($('#starting-stack').value) }, (reply) => {
     setBusy(false);
     if (!reply.ok) {
       errorBox.textContent = reply.error;
@@ -179,29 +183,72 @@ function chipBreakdown(amount, maxTypes = CHIP_DENOMINATIONS.length) {
   return chips.slice(0, maxTypes);
 }
 
-function animateBetToPot(amount) {
-  if (!amount) return;
-  const source = document.querySelector('.player.self .avatar');
-  const target = $('#pot');
-  if (!source || !target) return;
-  const from = source.getBoundingClientRect();
-  const to = target.getBoundingClientRect();
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  chipBreakdown(amount, 3).forEach(({ denomination, count }, index) => {
-    const chip = pokerChip(denomination, count > 1 ? count : undefined, true);
-    chip.classList.add('flying-chip');
-    chip.setAttribute('aria-hidden', 'true');
-    chip.style.left = `${from.left + from.width / 2 - 22 + index * 5}px`;
-    chip.style.top = `${from.top + from.height / 2 - 22 + index * 3}px`;
-    document.body.append(chip);
-    const flight = chip.animate([
-      { transform: 'translate(0, 0) rotate(0deg) scale(1)', opacity: 1 },
-      { transform: `translate(${to.left + to.width / 2 - from.left}px, ${to.top + to.height / 2 - from.top}px) rotate(${180 + index * 90}deg) scale(.72)`, opacity: 1 },
-    ], { duration: reduced ? 1 : 620 + index * 80, easing: 'cubic-bezier(.22,.75,.3,1)', fill: 'forwards' });
-    flight.addEventListener('finish', () => chip.remove());
-  });
+function chipPile(denomination, count, interactive = false) {
+  const pile = document.createElement(interactive ? 'button' : 'span');
+  pile.className = 'chip-pile';
+  pile.dataset.denomination = denomination;
+  pile.type = interactive ? 'button' : undefined;
+  const visible = Math.min(count, 4);
+  pile.style.setProperty('--pile-count-level', Math.max(0, visible - 1));
+  for (let level = 0; level < visible; level += 1) {
+    const chip = pokerChip(denomination, undefined, true);
+    chip.classList.add('pile-chip');
+    if (level === visible - 1) chip.classList.add('pile-top');
+    chip.style.setProperty('--pile-level', level);
+    pile.append(chip);
+  }
+  const tally = document.createElement('span');
+  tally.className = 'pile-count';
+  tally.textContent = `×${count}`;
+  pile.append(tally);
+  return pile;
 }
+
+function stagedTotal() {
+  return CHIP_DENOMINATIONS.reduce((total, denomination) => total + denomination * (stagedChips[denomination] ?? 0), 0);
+}
+
+function resetStagedChips() {
+  const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
+  stagedChips = Object.fromEntries(CHIP_DENOMINATIONS.map((denomination) => [denomination, 0]));
+  provisionalRack = Object.fromEntries(CHIP_DENOMINATIONS.map((denomination) => [denomination, self?.chips?.[denomination] ?? 0]));
+}
+
+function makeChipAvailable(denomination) {
+  const targetIndex = CHIP_DENOMINATIONS.indexOf(denomination);
+  if (targetIndex < 0 || !provisionalRack) return false;
+  while ((provisionalRack[denomination] ?? 0) === 0) {
+    let sourceIndex = -1;
+    for (let index = targetIndex - 1; index >= 0; index -= 1) {
+      if ((provisionalRack[CHIP_DENOMINATIONS[index]] ?? 0) > 0) {
+        sourceIndex = index;
+        break;
+      }
+    }
+    if (sourceIndex < 0) return false;
+    const source = CHIP_DENOMINATIONS[sourceIndex];
+    const next = CHIP_DENOMINATIONS[sourceIndex + 1];
+    provisionalRack[source] -= 1;
+    provisionalRack[next] = (provisionalRack[next] ?? 0) + source / next;
+  }
+  return true;
+}
+
+function addStagedChip(denomination) {
+  const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
+  if (!self || stagedTotal() + denomination > self.stack || !makeChipAvailable(denomination)) return;
+  provisionalRack[denomination] -= 1;
+  stagedChips[denomination] += 1;
+  renderStagedSelection();
+}
+
+function removeStagedChip(denomination) {
+  if (!stagedChips[denomination]) return;
+  stagedChips[denomination] -= 1;
+  provisionalRack[denomination] += 1;
+  renderStagedSelection();
+}
+
 
 function renderChipBank() {
   const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
@@ -234,20 +281,43 @@ function renderRaiseChips() {
   const rack = $('#raise-chips');
   rack.replaceChildren();
   const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
-  if (!self) return;
+  if (!self || !provisionalRack) return;
+  const remainingValue = CHIP_DENOMINATIONS.reduce((total, denomination) => total + denomination * (provisionalRack[denomination] ?? 0), 0);
   for (const denomination of [...CHIP_DENOMINATIONS].reverse()) {
-    if (denomination === 1) continue;
-    const count = self.chips?.[denomination] ?? 0;
+    const count = provisionalRack[denomination] ?? 0;
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('aria-label', `Add ${denomination} chip`);
-    button.disabled = count === 0;
+    button.disabled = denomination > remainingValue || stagedTotal() + denomination > self.stack;
     button.append(pokerChip(denomination, count, true));
-    button.addEventListener('click', () => {
-      if (raiseBounds) setRaiseAmount(Number($('#raise-slider').value) + denomination);
-    });
+    button.addEventListener('click', () => addStagedChip(denomination));
     rack.append(button);
   }
+}
+
+function renderStagedSelection() {
+  const piles = $('#staged-piles');
+  piles.replaceChildren();
+  for (const denomination of CHIP_DENOMINATIONS) {
+    const count = stagedChips[denomination] ?? 0;
+    if (!count) continue;
+    const pile = chipPile(denomination, count, true);
+    pile.setAttribute('aria-label', `Remove one ${denomination} chip`);
+    pile.addEventListener('click', () => removeStagedChip(denomination));
+    piles.append(pile);
+  }
+  const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
+  const total = stagedTotal();
+  const target = (self?.bet ?? 0) + total;
+  $('#staged-total').textContent = total.toLocaleString();
+  $('#staged-target').textContent = target.toLocaleString();
+  const validRaise = Boolean(raiseBounds && total > 0 && target > raiseBounds.currentBet
+    && target <= raiseBounds.max && (target >= raiseBounds.min || target === raiseBounds.max));
+  $('#raise-confirm').disabled = !validRaise || actionPending;
+  const actions = snapshot?.state.legalActions ?? [];
+  $('#staged-fold').classList.toggle('hidden', !actions.includes('fold'));
+  $('#staged-check').classList.toggle('hidden', !actions.includes('check'));
+  renderRaiseChips();
 }
 
 function playerElement(player, self, position) {
@@ -278,15 +348,13 @@ function playerElement(player, self, position) {
   name.textContent = `${player.name}${self ? ' · YOU' : ''}`;
   const stack = document.createElement('div');
   stack.className = 'player-stack';
-  stack.textContent = `${player.stack.toLocaleString()} chips${player.allIn ? ' · ALL IN' : ''}`;
+  stack.textContent = `STACK ${player.stack.toLocaleString()}${player.allIn ? ' · ALL IN' : ''}`;
   node.append(avatar, name, stack);
   if (player.bet > 0) {
     const bet = document.createElement('div');
     bet.className = 'bet-chip';
-    for (const { denomination, count } of chipBreakdown(player.bet, 4)) {
-      const chip = pokerChip(denomination, count > 1 ? count : undefined, true);
-      chip.classList.add('micro');
-      bet.append(chip);
+    for (const { denomination, count } of chipBreakdown(player.bet)) {
+      bet.append(chipPile(denomination, count));
     }
     const total = document.createElement('span');
     total.className = 'bet-total';
@@ -311,21 +379,21 @@ function renderPlayers() {
   if (self) container.append(playerElement(self, true, { x: 50, y: 92 }));
 }
 
-function actionButton(label, type, className = '', visualAmount = 0) {
+function actionButton(label, type, className = '') {
   const button = document.createElement('button');
   button.className = `action-button ${className}`;
   button.textContent = label;
-  button.addEventListener('click', () => sendAction(type, undefined, visualAmount));
+  button.addEventListener('click', () => sendAction(type));
   return button;
 }
 
 function setActionBusy(busy) {
-  document.querySelectorAll('#action-buttons button, #raise-confirm').forEach((button) => {
+  document.querySelectorAll('#action-buttons button, #raise-panel button').forEach((button) => {
     button.disabled = busy;
   });
 }
 
-function sendAction(type, amount, visualAmount = 0) {
+function sendAction(type, amount) {
   if (actionPending) return;
   actionPending = true;
   setActionBusy(true);
@@ -336,75 +404,57 @@ function sendAction(type, amount, visualAmount = 0) {
     settled = true;
     clearTimeout(timeout);
     actionPending = false;
-    if (reply.ok) animateBetToPot(visualAmount);
-    else showToast(reply.error);
+    if (!reply.ok) showToast(reply.error);
     renderControls();
   };
   const timeout = setTimeout(() => finish({ ok: false, error: 'Action timed out — try again' }), 5000);
   socket.emit('action', { type, amount }, finish);
 }
 
-function clampRaise(amount) {
-  if (!raiseBounds) return 0;
-  const { min, max, step } = raiseBounds;
-  if (amount >= max) return max;
-  const snapped = min + Math.round((amount - min) / step) * step;
-  return Math.max(min, Math.min(max, snapped));
-}
-
-function setRaiseAmount(amount) {
-  if (!raiseBounds) return;
-  const value = clampRaise(amount);
-  $('#raise-slider').value = String(value);
-  $('#raise-amount').textContent = value.toLocaleString();
-  $('#raise-confirm').textContent = value === raiseBounds.max ? `GO ALL IN · ${value.toLocaleString()}` : `CONFIRM · RAISE TO ${value.toLocaleString()}`;
-}
-
-function openRaisePanel() {
+function openRaisePanel(invoker = document.activeElement) {
   const self = snapshot.state.players.find((player) => player.id === snapshot.selfId);
   const min = Math.min(self.bet + self.stack, snapshot.state.currentBet + snapshot.state.minRaise);
   const max = self.bet + self.stack;
-  const step = 1;
-  const call = Math.max(0, snapshot.state.currentBet - self.bet);
-  raiseBounds = { min, max, step, call, pot: snapshot.state.pot, currentBet: snapshot.state.currentBet };
-  const slider = $('#raise-slider');
-  slider.min = String(min);
-  slider.max = String(max);
-  slider.step = String(step);
-  setRaiseAmount(min);
-  renderRaiseChips();
+  raiseBounds = { min, max, currentBet: snapshot.state.currentBet };
+  resetStagedChips();
+  raiseInvoker = invoker;
+  gameScreen.classList.add('raise-mode');
+  controls.inert = true;
+  controls.classList.add('hidden');
   $('#chip-bank').classList.add('hidden');
+  reactionTray.classList.add('hidden');
+  $('#staged-bet').classList.remove('hidden');
   $('#raise-panel').classList.remove('hidden');
+  renderStagedSelection();
+  $('#raise-cancel').focus();
 }
 
 function closeRaisePanel() {
   $('#raise-panel').classList.add('hidden');
+  $('#staged-bet').classList.add('hidden');
+  gameScreen.classList.remove('raise-mode');
+  controls.inert = false;
+  stagedChips = {};
+  provisionalRack = null;
   raiseBounds = null;
+  if (snapshot?.state.phase !== 'waiting') controls.classList.remove('hidden');
+  if (!actionPending && raiseInvoker?.isConnected) raiseInvoker.focus();
+  raiseInvoker = null;
 }
 
-$('#raise-slider').addEventListener('input', (event) => setRaiseAmount(Number(event.target.value)));
 $('#raise-cancel').addEventListener('click', closeRaisePanel);
-$('#raise-chip-reset').addEventListener('click', () => {
-  if (raiseBounds) setRaiseAmount(raiseBounds.min);
-});
+$('#staged-fold').addEventListener('click', () => sendAction('fold'));
+$('#staged-check').addEventListener('click', () => sendAction('check'));
 $('#raise-confirm').addEventListener('click', () => {
-  if (raiseBounds) {
-    const target = Number($('#raise-slider').value);
-    const self = snapshot.state.players.find((player) => player.id === snapshot.selfId);
-    sendAction('raise', target, Math.min(self.stack, target - self.bet));
-  }
+  if (!raiseBounds) return;
+  const self = snapshot.state.players.find((player) => player.id === snapshot.selfId);
+  const target = self.bet + stagedTotal();
+  const valid = target > raiseBounds.currentBet && target <= raiseBounds.max
+    && (target >= raiseBounds.min || target === raiseBounds.max);
+  if (valid) sendAction('raise', target);
 });
-$('.raise-presets').addEventListener('click', (event) => {
-  const button = event.target.closest('[data-preset]');
-  if (!button || !raiseBounds) return;
-  const { min, max, pot, call, currentBet } = raiseBounds;
-  const values = {
-    min,
-    half: currentBet + (pot + call) / 2,
-    pot: currentBet + pot + call,
-    allin: max,
-  };
-  setRaiseAmount(values[button.dataset.preset]);
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && raiseBounds) closeRaisePanel();
 });
 
 function renderControls() {
@@ -438,8 +488,9 @@ function renderControls() {
     const button = document.createElement('button');
     button.className = 'action-button raise-action';
     button.textContent = 'Raise…';
-    button.addEventListener('click', openRaisePanel);
+    button.addEventListener('click', () => openRaisePanel(button));
     bar.append(button);
+    if (raiseBounds) raiseInvoker = button;
   } else {
     closeRaisePanel();
     if (actions.includes('all-in')) {
@@ -447,6 +498,7 @@ function renderControls() {
       bar.append(actionButton('All in', 'all-in', 'raise-action', self.stack));
     }
   }
+  if (raiseBounds) controls.classList.add('hidden');
 }
 
 function renderLobby() {
@@ -458,12 +510,20 @@ function renderLobby() {
   $('#deal').disabled = !enoughPlayers;
   $('#deal').textContent = snapshot.state.handNumber ? 'Play again' : 'Deal the cards';
   $('#host-note').classList.toggle('hidden', snapshot.isHost);
+  const canSetStack = snapshot.isHost && snapshot.state.handNumber === 0;
+  $('#host-stack-control').classList.toggle('hidden', !canSetStack);
+  if (canSetStack && document.activeElement !== $('#lobby-starting-stack')) {
+    $('#lobby-starting-stack').value = String(snapshot.state.startingStack);
+  }
 }
 
 function render() {
   if (!snapshot) return;
   $('#room-code').textContent = snapshot.roomCode;
-  $('#pot strong').textContent = snapshot.state.pot.toLocaleString();
+  const tablePot = snapshot.state.tablePot ?? snapshot.state.pot;
+  $('#pot strong').textContent = tablePot.toLocaleString();
+  const potChips = $('#pot-chips');
+  potChips.replaceChildren(...chipBreakdown(tablePot).map(({ denomination, count }) => chipPile(denomination, count)));
   $('#phase').textContent = snapshot.state.phase === 'waiting' ? 'TABLE OPEN' : snapshot.state.phase.toUpperCase();
   const board = $('#board');
   board.replaceChildren(...snapshot.state.community.map((card) => cardElement(card)));
@@ -487,6 +547,14 @@ socket.on('state', (data) => {
 $('#deal').addEventListener('click', () => socket.emit('start-hand', {}, (reply) => {
   if (!reply.ok) showToast(reply.error);
 }));
+
+$('#apply-starting-stack').addEventListener('click', () => {
+  const startingStack = Number($('#lobby-starting-stack').value);
+  socket.emit('set-starting-stack', { startingStack }, (reply) => {
+    if (!reply.ok) showToast(reply.error);
+    else showToast(`Starting stack set to ${startingStack.toLocaleString()}`);
+  });
+});
 
 async function shareRoom() {
   const url = `${location.origin}/?room=${activeCode}`;

@@ -37,7 +37,7 @@ export function createRoomStore(codeGenerator = defaultCode, { maxRooms = 500 } 
       token: crypto.randomBytes(24).toString('base64url'),
       socketId,
       name: safeName,
-      stack: 1000,
+      stack: room.game.startingStack,
       connected: true,
       isHost: room.game.players.length === 0,
     };
@@ -52,10 +52,10 @@ export function createRoomStore(codeGenerator = defaultCode, { maxRooms = 500 } 
   }
 
   return {
-    create({ name, socketId }) {
+    create({ name, socketId, startingStack }) {
       if (rooms.size >= maxRooms) throw new Error('Too many active rooms; try again later');
       const code = uniqueCode();
-      const room = { code, game: createGame(), createdAt: Date.now() };
+      const room = { code, game: createGame({ startingStack }), createdAt: Date.now() };
       rooms.set(code, room);
       const player = addPlayer(room, { name, socketId });
       return { room, player };

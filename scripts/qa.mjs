@@ -26,6 +26,7 @@ await host.screenshot({ path: new URL('landing-mobile.png', out).pathname, fullP
 await host.getByRole('button', { name: 'Join a party' }).waitFor();
 await host.getByRole('button', { name: 'Host a party' }).click();
 await host.getByLabel('Your name').fill('Daniel');
+await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const roomCode = (await host.locator('#room-code').textContent()).trim();
@@ -34,7 +35,7 @@ if (!/^[A-Z0-9]{6}$/.test(roomCode)) throw new Error(`Unexpected room code: ${ro
 await host.getByRole('button', { name: 'Open chip bank' }).click();
 await host.locator('#chip-bank:not(.hidden)').waitFor();
 await host.getByRole('button', { name: 'Change one 500 chip' }).click();
-await host.locator('[data-chip-bank="500"] .chip-count').filter({ hasText: '×1' }).waitFor();
+await host.locator('[data-chip-bank="500"] .chip-count').filter({ hasText: '×4' }).waitFor();
 await host.locator('[data-chip-bank="100"] .chip-count').filter({ hasText: '×5' }).waitFor();
 await host.screenshot({ path: new URL('chip-bank-mobile.png', out).pathname, fullPage: true });
 await host.getByRole('button', { name: 'Close chip bank' }).click();
@@ -44,26 +45,77 @@ await guest.getByLabel('Your name').fill('Family');
 await guest.getByRole('button', { name: 'Join party' }).click();
 await guest.locator('#game:not(.hidden)').waitFor();
 await host.getByText('Family', { exact: false }).first().waitFor();
+for (const page of [host, guest]) {
+  const stackText = await page.locator('.player.self .player-stack').textContent();
+  if (!stackText.includes('2,500')) throw new Error(`Host starting stack was not applied: ${stackText}`);
+}
+await host.getByLabel('Table starting chips').fill('3000');
+await host.getByRole('button', { name: 'Apply starting chips' }).click();
+await host.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFor();
+await guest.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFor();
 await host.getByRole('button', { name: 'Deal the cards' }).click();
 await host.locator('.player.self .hole-cards .card:not(.back)').first().waitFor();
 await guest.locator('.player.self .hole-cards .card:not(.back)').first().waitFor();
 const holeCardWidth = await host.locator('.player.self .hole-cards .card').first().evaluate((card) => card.getBoundingClientRect().width);
-if (holeCardWidth < 34) throw new Error(`Hole cards are still too small: ${holeCardWidth}px`);
+if (holeCardWidth < 40) throw new Error(`Hole cards are still too small: ${holeCardWidth}px`);
 if (await host.locator('.player.self .card-center').count() !== 2) throw new Error('Full pixel card faces were not rendered');
-if (await host.locator('.bet-chip .poker-chip').count() < 2) throw new Error('Posted bets were not rendered as numbered physical chips');
+if (await host.locator('.bet-chip .chip-pile').count() < 2) throw new Error('Posted bets were not rendered as numbered pixel chip piles');
+if ((await host.locator('#pot strong').textContent()).trim() !== '0') throw new Error('Street bets moved into the pot before the betting round completed');
+const tableShape = await host.locator('.poker-table').evaluate((table) => {
+  const rect = table.getBoundingClientRect();
+  return { width: rect.width, height: rect.height, radius: getComputedStyle(table).borderRadius };
+});
+if (Math.abs(tableShape.width - tableShape.height) > 2 || tableShape.radius !== '0px') {
+  throw new Error(`Table is not a square pixel table: ${JSON.stringify(tableShape)}`);
+}
 
+const cardsBeforeRaise = await host.locator('.player.self .hole-cards').evaluate((cards) => cards.getBoundingClientRect().top);
 await host.getByRole('button', { name: 'Raise' }).click();
 await host.locator('#raise-panel:not(.hidden)').waitFor();
-for (const preset of ['Minimum', 'Half pot', 'Full pot', 'All in']) {
-  await host.getByRole('button', { name: preset }).waitFor();
-}
-const raiseBeforeChip = Number((await host.locator('#raise-amount').textContent()).replace(/\D/g, ''));
+if (!(await host.locator('#controls').evaluate((node) => node.classList.contains('hidden')))) throw new Error('Normal actions stayed visible while arranging a raise');
+await guest.getByRole('button', { name: 'Open chip bank' }).click();
+await guest.locator('[data-chip-bank="500"]').click();
+await guest.locator('#chip-bank-close').click();
+await host.waitForTimeout(120);
+if (!(await host.locator('#controls').evaluate((node) => node.classList.contains('hidden')))) throw new Error('A state refresh exposed normal actions over the staged raise');
+await host.locator('#staged-bet:not(.hidden)').waitFor();
+if ((await host.locator('#staged-total').textContent()).trim() !== '0') throw new Error('Staged bet did not start empty');
+if (!(await host.getByRole('button', { name: 'Confirm staged raise' }).isDisabled())) throw new Error('Invalid empty raise could be confirmed');
+await host.waitForFunction((before) => document.querySelector('.player.self .hole-cards').getBoundingClientRect().top - before >= 45, cardsBeforeRaise);
+const cardsDuringRaise = await host.locator('.player.self .hole-cards').evaluate((cards) => cards.getBoundingClientRect().top);
+if (cardsDuringRaise - cardsBeforeRaise < 45) throw new Error('Private cards did not move away to make room for staged chips');
 await host.getByRole('button', { name: 'Add 20 chip' }).click();
-const raiseAfterChip = Number((await host.locator('#raise-amount').textContent()).replace(/\D/g, ''));
-if (raiseAfterChip !== raiseBeforeChip + 20) throw new Error('Tapping a 20 chip did not add 20 to the raise');
-await host.getByRole('button', { name: 'Half pot' }).click();
+await host.getByRole('button', { name: 'Add 20 chip' }).click();
+await host.getByRole('button', { name: 'Add 10 chip' }).click();
+if ((await host.locator('#staged-total').textContent()).trim() !== '50') throw new Error('Staged chip total was not 50');
+const stagedLayers = await host.getByRole('button', { name: 'Remove one 20 chip' }).locator('.pile-chip').evaluateAll((chips) => chips.map((chip) => chip.getBoundingClientRect().top));
+if (stagedLayers.length !== 2 || Math.abs(stagedLayers[0] - stagedLayers[1]) < 5) throw new Error(`Selected chips were not rendered as a physical pile: ${stagedLayers}`);
 await host.screenshot({ path: new URL('raise-panel-mobile.png', out).pathname, fullPage: true });
+await host.getByRole('button', { name: 'Remove one 20 chip' }).click();
+if ((await host.locator('#staged-total').textContent()).trim() !== '30') throw new Error('Clicking a staged pile did not remove one chip');
+if (await host.getByRole('button', { name: 'Confirm staged raise' }).isDisabled()) throw new Error('A valid staged raise could not be confirmed');
+await host.setViewportSize({ width: 350, height: 664 });
+for (const value of [1, 5, 100, 500]) await host.getByRole('button', { name: `Add ${value} chip` }).click();
+const stagedLayout = await host.locator('#staged-bet').evaluate((stage) => {
+  const bounds = stage.getBoundingClientRect();
+  return [...stage.querySelectorAll('.staged-piles .chip-pile')].map((pile) => {
+    const rect = pile.getBoundingClientRect();
+    return { left: rect.left - bounds.left, right: rect.right - bounds.right };
+  });
+});
+if (stagedLayout.some((pile) => pile.left < -1 || pile.right > 1)) throw new Error(`Six denomination piles overflowed the raise stage: ${JSON.stringify(stagedLayout)}`);
+await host.setViewportSize({ width: 390, height: 664 });
 await host.getByRole('button', { name: 'Cancel raise' }).click();
+await host.locator('#controls:not(.hidden)').waitFor();
+if (!(await host.locator('#staged-bet').evaluate((node) => node.classList.contains('hidden')))) throw new Error('Cancelling did not clear the staged chips');
+if (!(await host.evaluate(() => document.activeElement?.textContent?.includes('Raise')))) throw new Error('Focus did not return to Raise after a state refresh and cancellation');
+
+await host.getByRole('button', { name: 'Raise' }).click();
+await host.getByRole('button', { name: 'Add 20 chip' }).click();
+await host.getByRole('button', { name: 'Add 10 chip' }).click();
+await host.getByRole('button', { name: 'Confirm staged raise' }).click();
+await host.locator('.player.self .bet-total').filter({ hasText: 'BET 40' }).waitFor();
+if ((await host.locator('#pot strong').textContent()).trim() !== '0') throw new Error('Confirmed chips moved into the pot before the other player acted');
 
 const privacy = {
   hostOwnFaces: await host.locator('.player.self .card:not(.back)').count(),
@@ -89,7 +141,6 @@ for (let step = 0; step < 8; step += 1) {
             return control.disabled;
           });
           if (!lockedImmediately) throw new Error('Betting controls were not locked while the action was pending');
-          await page.locator('.flying-chip').first().waitFor({ state: 'attached', timeout: 1000 });
         } else {
           await button.click();
         }
@@ -103,9 +154,13 @@ for (let step = 0; step < 8; step += 1) {
   if (!acted) throw new Error('No legal call/check control was available');
 }
 if ((await host.locator('#phase').textContent()).trim() !== 'FLOP') throw new Error('Betting did not progress to the flop');
+if (Number((await host.locator('#pot strong').textContent()).replace(/\D/g, '')) <= 0) throw new Error('Completed street chips were not collected into the pot');
+const potLayers = await host.locator('#pot-chips .chip-pile').first().locator('.pile-chip').evaluateAll((chips) => chips.map((chip) => chip.getBoundingClientRect().top));
+if (potLayers.length < 2 || new Set(potLayers.map(Math.round)).size < 2) throw new Error(`Pot chips were not a visible physical pile: ${potLayers}`);
+if (await host.locator('.bet-chip').count()) throw new Error('Player-side bets remained after the street completed');
 if (await host.locator('#board .card').count() !== 3) throw new Error('Flop did not contain three cards');
 const boardCardWidth = await host.locator('#board .card').first().evaluate((card) => card.getBoundingClientRect().width);
-if (boardCardWidth < 44) throw new Error(`Community cards are still too small: ${boardCardWidth}px`);
+if (boardCardWidth < 48) throw new Error(`Community cards are still too small: ${boardCardWidth}px`);
 await host.setViewportSize({ width: 350, height: 664 });
 const narrowCardWidth = await host.locator('#board .card').first().evaluate((card) => card.getBoundingClientRect().width);
 if (narrowCardWidth < 40) throw new Error(`Cards regress on narrow phones: ${narrowCardWidth}px`);
