@@ -2,11 +2,15 @@
 
 A mobile-first, private Texas Hold’em table for 2–8 family members on separate devices. The Node server owns the room, shuffled deck, hidden cards, turn order, bets, side pots, and showdown; browsers only receive the state they are allowed to see.
 
+**Source:** https://github.com/duuberian/railway-holdem
+
 ## Features
 
-- Live private rooms with six-character invite codes
+- Live private rooms with explicit **Host a party** / **Join a party** flows and six-character invite codes
 - Server-authoritative 52-card deck; duplicate-card invariants are tested
 - 2–8 players, blinds, fold/check/call/raise/all-in, community streets, side pots, and showdown hand evaluation
+- Intuitive raise panel with minimum, half-pot, full-pot, and all-in presets plus final confirmation
+- Original retro pixel-casino styling with chunky, readable cards and controls
 - Hole cards visible only to their owner until showdown
 - One-tap emoji reactions
 - Mobile-first responsive table and installable PWA shell
