@@ -22,6 +22,9 @@ let raiseInvoker = null;
 let actionPending = false;
 let cardsRevealed = false;
 let lastHandNumber = 0;
+let lastCommunityCount = 0;
+let lastActorId = null;
+let lastResultKey = '';
 let soundEnabled = localStorage.getItem('el-holdem:sound') !== 'muted';
 let audioContext = null;
 let toastTimer;
@@ -104,6 +107,13 @@ function playSound(kind) {
     else if (kind === 'reaction') {
       tone(620, 0.08, 'sine', 0.025);
       tone(900, 0.08, 'sine', 0.02, 0.07);
+    } else if (kind === 'turn') {
+      tone(440, 0.07, 'square', 0.018);
+      tone(660, 0.09, 'square', 0.02, 0.08);
+    } else if (kind === 'win') {
+      tone(523, 0.11, 'square', 0.022);
+      tone(659, 0.11, 'square', 0.022, 0.1);
+      tone(784, 0.18, 'square', 0.025, 0.2);
     }
   } catch {
     failAudio();
@@ -275,16 +285,32 @@ function chipPile(denomination, count, interactive = false) {
   const pile = document.createElement(interactive ? 'button' : 'span');
   pile.className = 'chip-pile';
   pile.dataset.denomination = denomination;
-  pile.type = interactive ? 'button' : undefined;
-  const visible = Math.min(count, 4);
-  pile.style.setProperty('--pile-count-level', Math.max(0, visible - 1));
-  for (let level = 0; level < visible; level += 1) {
-    const chip = pokerChip(denomination, undefined, true);
-    chip.classList.add('pile-chip');
-    if (level === visible - 1) chip.classList.add('pile-top');
-    chip.style.setProperty('--pile-level', level);
-    pile.append(chip);
+  if (interactive) pile.type = 'button';
+
+  const chipsPerStack = 6;
+  const visibleStacks = Math.min(4, Math.max(1, Math.ceil(count / chipsPerStack)));
+  if (count === 0) pile.classList.add('empty-pile');
+  pile.style.setProperty('--stack-count', visibleStacks);
+  pile.style.setProperty('--pile-width', `${visibleStacks * 26 - 2}px`);
+  pile.setAttribute('aria-label', `${count} chip${count === 1 ? '' : 's'} worth ${denomination.toLocaleString()} each`);
+
+  let remaining = count;
+  for (let stackIndex = 0; stackIndex < visibleStacks; stackIndex += 1) {
+    const stack = document.createElement('span');
+    stack.className = 'pile-stack';
+    const visible = Math.min(chipsPerStack, Math.max(1, remaining));
+    stack.style.setProperty('--pile-count-level', Math.max(0, visible - 1));
+    for (let level = 0; level < visible; level += 1) {
+      const chip = pokerChip(denomination, undefined, true);
+      chip.classList.add('pile-chip');
+      if (level === visible - 1) chip.classList.add('pile-top');
+      chip.style.setProperty('--pile-level', level);
+      stack.append(chip);
+    }
+    pile.append(stack);
+    remaining = Math.max(0, remaining - chipsPerStack);
   }
+
   const tally = document.createElement('span');
   tally.className = 'pile-count';
   tally.textContent = `×${count}`;
@@ -348,23 +374,51 @@ function renderChipBank() {
   rack.replaceChildren();
   for (const denomination of CHIP_DENOMINATIONS) {
     const count = self.chips?.[denomination] ?? 0;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.dataset.chipBank = denomination;
-    button.setAttribute('aria-label', denomination === 1 ? 'Smallest chip' : `Change one ${denomination} chip`);
-    button.disabled = denomination === 1 || count === 0;
-    button.append(pokerChip(denomination, count));
-    button.addEventListener('click', () => {
-      button.disabled = true;
+    const item = document.createElement('div');
+    item.className = 'chip-bank-item';
+
+    const breakButton = document.createElement('button');
+    breakButton.type = 'button';
+    breakButton.dataset.chipBank = denomination;
+    breakButton.setAttribute('aria-label', denomination === 1 ? 'Smallest chip' : `Break one ${denomination} chip into smaller chips`);
+    breakButton.disabled = denomination === 1 || count === 0;
+    breakButton.append(chipPile(denomination, count));
+    breakButton.addEventListener('click', () => {
+      breakButton.disabled = true;
       playSound('chip');
-      socket.emit('exchange-chip', { denomination }, (reply) => {
+      socket.emit('exchange-chip', { denomination, direction: 'down' }, (reply) => {
         if (!reply.ok) {
           showToast(reply.error);
-          button.disabled = false;
+          breakButton.disabled = false;
         }
       });
     });
-    rack.append(button);
+    item.append(breakButton);
+
+    if (denomination !== 1) {
+      const index = CHIP_DENOMINATIONS.indexOf(denomination);
+      const smaller = CHIP_DENOMINATIONS[index + 1];
+      const needed = denomination / smaller;
+      const combineButton = document.createElement('button');
+      combineButton.type = 'button';
+      combineButton.className = 'combine-chip';
+      combineButton.dataset.chipCombine = denomination;
+      combineButton.textContent = `↑ ${needed}×${smaller}`;
+      combineButton.setAttribute('aria-label', `Combine ${needed} chips worth ${smaller} into one ${denomination} chip`);
+      combineButton.disabled = (self.chips?.[smaller] ?? 0) < needed;
+      combineButton.addEventListener('click', () => {
+        combineButton.disabled = true;
+        playSound('chip');
+        socket.emit('exchange-chip', { denomination, direction: 'up' }, (reply) => {
+          if (!reply.ok) {
+            showToast(reply.error);
+            combineButton.disabled = false;
+          }
+        });
+      });
+      item.append(combineButton);
+    }
+    rack.append(item);
   }
 }
 
@@ -659,8 +713,19 @@ socket.on('state', (data) => {
   if (data.state.handNumber > lastHandNumber) {
     cardsRevealed = false;
     playSound('paper');
+  } else if (data.state.community.length > lastCommunityCount) {
+    playSound('paper');
+  }
+  if (data.state.currentActor === data.selfId && lastActorId !== data.selfId) playSound('turn');
+  const resultKey = data.state.result ? JSON.stringify(data.state.result) : '';
+  if (resultKey && resultKey !== lastResultKey) {
+    const winners = data.state.result.winners ?? [];
+    if (data.state.result.winnerId === data.selfId || winners.some((winner) => winner.id === data.selfId)) playSound('win');
   }
   lastHandNumber = data.state.handNumber;
+  lastCommunityCount = data.state.community.length;
+  lastActorId = data.state.currentActor;
+  lastResultKey = resultKey;
   snapshot = data;
   activeCode = data.roomCode;
   enterGame();
@@ -679,20 +744,39 @@ function setCardsRevealed(visible) {
 
 const revealCards = $('#reveal-cards');
 let revealPointerId = null;
+let revealStartY = 0;
 let revealKey = null;
+
+function setRevealDrag(progress) {
+  const clamped = Math.max(0, Math.min(1, progress));
+  gameScreen.style.setProperty('--reveal-drag', String(clamped));
+  gameScreen.style.setProperty('--reveal-offset', `${clamped * 18}px`);
+  gameScreen.style.setProperty('--reveal-tilt', `${clamped * -2}deg`);
+  revealCards.style.setProperty('--reveal-drag', String(clamped));
+  revealCards.style.setProperty('--reveal-button-offset', `${clamped * 7}px`);
+  if (revealPointerId !== null) setCardsRevealed(clamped >= 0.16);
+}
 
 function concealCards() {
   revealPointerId = null;
   revealKey = null;
   setCardsRevealed(false);
+  gameScreen.getBoundingClientRect();
+  setRevealDrag(0);
 }
 
 revealCards.addEventListener('pointerdown', (event) => {
   if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
   event.preventDefault();
   revealPointerId = event.pointerId;
+  revealStartY = event.clientY;
+  setRevealDrag(0);
   try { revealCards.setPointerCapture(event.pointerId); } catch { /* Synthetic and legacy events may not be capturable. */ }
-  setCardsRevealed(true);
+});
+revealCards.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== revealPointerId) return;
+  event.preventDefault();
+  setRevealDrag((event.clientY - revealStartY) / 44);
 });
 document.addEventListener('pointerup', (event) => {
   if (revealPointerId === null || event.pointerId === revealPointerId) concealCards();
@@ -708,6 +792,7 @@ revealCards.addEventListener('keydown', (event) => {
   if (event.key === ' ' || event.key === 'Enter') {
     event.preventDefault();
     revealKey = event.key;
+    setRevealDrag(1);
     setCardsRevealed(true);
   }
 });
@@ -787,7 +872,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=8'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=9'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

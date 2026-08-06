@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   addChips,
   chipRackValue,
+  combineChip,
   createChipRack,
   exchangeChip,
   spendChips,
@@ -20,6 +21,14 @@ describe('virtual poker chips', () => {
     assert.equal(changed[500], 1);
     assert.equal(changed[100], 5);
     assert.equal(chipRackValue(changed), 1000);
+  });
+
+  it('manually combines smaller chips into one larger chip without changing value', () => {
+    const broken = exchangeChip(createChipRack(1000), 500);
+    const combined = combineChip(broken, 500);
+    assert.deepEqual(combined, createChipRack(1000));
+    assert.equal(chipRackValue(combined), 1000);
+    assert.throws(() => combineChip(createChipRack(100), 500), /need 5/);
   });
 
   it('automatically makes exact change when spending', () => {

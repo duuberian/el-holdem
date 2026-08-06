@@ -30,15 +30,15 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v0.8' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v0.9' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 if (!/^[A-Z0-9]{6}$/.test(roomCode)) throw new Error(`Unexpected room code: ${roomCode}`);
 
 await host.getByRole('button', { name: 'Open chip bank' }).click();
 await host.locator('#chip-bank:not(.hidden)').waitFor();
-await host.getByRole('button', { name: 'Change one 500 chip' }).click();
-await host.locator('[data-chip-bank="500"] .chip-count').filter({ hasText: '×4' }).waitFor();
-await host.locator('[data-chip-bank="100"] .chip-count').filter({ hasText: '×5' }).waitFor();
+await host.getByRole('button', { name: 'Break one 500 chip into smaller chips' }).click();
+await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '×4' }).waitFor();
+await host.locator('[data-chip-bank="100"] .pile-count').filter({ hasText: '×5' }).waitFor();
 await host.screenshot({ path: new URL('chip-bank-mobile.png', out).pathname, fullPage: true });
 await host.getByRole('button', { name: 'Close chip bank' }).click();
 
@@ -81,10 +81,13 @@ for (const page of [host, guest]) {
   }
   if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards were visible without holding reveal');
   const reveal = page.getByRole('button', { name: 'Hold to reveal your cards' });
-  await reveal.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true });
-  if (await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Holding reveal did not show both private cards');
-  await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true });
-  if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Private cards stayed visible after reveal was released');
+  const revealBox = await reveal.boundingBox();
+  await reveal.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 10 });
+  await reveal.dispatchEvent('pointermove', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
+  const dragProgress = await page.locator('#game').evaluate((game) => Number(game.style.getPropertyValue('--reveal-drag')));
+  if (dragProgress <= 0 || await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Dragging reveal down did not fluidly show both private cards');
+  await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
+  if (await page.locator('.player.self .card:not(.back)').count() || await page.locator('#game').evaluate((game) => Number(game.style.getPropertyValue('--reveal-drag')))) throw new Error('Private cards stayed visible after reveal was released');
   await reveal.dispatchEvent('pointerdown', { pointerId: 2, pointerType: 'mouse', isPrimary: false, button: 2 });
   if (await page.locator('.player.self .card:not(.back)').count()) throw new Error('Secondary pointer revealed private cards');
   await reveal.focus();
@@ -110,7 +113,19 @@ await host.getByRole('button', { name: 'Raise' }).click();
 await host.locator('#raise-panel:not(.hidden)').waitFor();
 if (!(await host.locator('#controls').evaluate((node) => node.classList.contains('hidden')))) throw new Error('Normal actions stayed visible while arranging a raise');
 await guest.getByRole('button', { name: 'Open chip bank' }).click();
-await guest.locator('[data-chip-bank="500"]').click();
+for (let exchange = 0; exchange < 5; exchange += 1) await guest.locator('[data-chip-bank="500"]').click();
+const splitPile = guest.locator('#self-bankroll .chip-pile[data-denomination="100"]');
+await splitPile.locator('.pile-count', { hasText: '×29' }).waitFor();
+const splitPileLayout = await splitPile.evaluate((pile) => {
+  const badge = pile.querySelector('.pile-count').getBoundingClientRect();
+  const rect = pile.getBoundingClientRect();
+  return { stacks: pile.querySelectorAll('.pile-stack').length, badgeText: pile.querySelector('.pile-count').textContent, badgeLeft: badge.left, badgeRight: badge.right, pileLeft: rect.left, pileRight: rect.right };
+});
+if (splitPileLayout.stacks !== 4 || splitPileLayout.badgeText !== '×29' || splitPileLayout.badgeLeft < splitPileLayout.pileLeft - 1 || splitPileLayout.badgeRight > splitPileLayout.pileRight + 1) throw new Error(`Tall chip count did not split into readable adjacent piles: ${JSON.stringify(splitPileLayout)}`);
+const beforeCombineTotal = await guest.locator('#chip-bank-total').textContent();
+await guest.locator('[data-chip-combine="500"]').click();
+await guest.locator('#self-bankroll .chip-pile[data-denomination="100"] .pile-count', { hasText: '×24' }).waitFor();
+if (await guest.locator('#chip-bank-total').textContent() !== beforeCombineTotal) throw new Error('Manual chip combine changed the bankroll value');
 await guest.locator('#chip-bank-close').click();
 await host.waitForTimeout(120);
 if (!(await host.locator('#controls').evaluate((node) => node.classList.contains('hidden')))) throw new Error('A state refresh exposed normal actions over the staged raise');

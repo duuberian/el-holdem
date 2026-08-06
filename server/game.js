@@ -1,5 +1,5 @@
 import pokerSolver from 'pokersolver';
-import { addChips, createChipRack, exchangeChip, spendChips } from './chips.js';
+import { addChips, combineChip, createChipRack, exchangeChip, spendChips } from './chips.js';
 
 const { Hand } = pokerSolver;
 const SUITS = ['s', 'h', 'd', 'c'];
@@ -267,10 +267,13 @@ function showdown(game) {
   finishHand(game);
 }
 
-export function exchangePlayerChip(game, playerId, denomination) {
+export function exchangePlayerChip(game, playerId, denomination, direction = 'down') {
   const player = game.players.find((candidate) => candidate.id === playerId);
   if (!player) throw new Error('Player not found');
-  player.chips = exchangeChip(ensureChipRack(player), denomination);
+  if (!['down', 'up'].includes(direction)) throw new Error('Invalid chip exchange direction');
+  player.chips = direction === 'up'
+    ? combineChip(ensureChipRack(player), denomination)
+    : exchangeChip(ensureChipRack(player), denomination);
   return player.chips;
 }
 

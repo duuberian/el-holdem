@@ -177,7 +177,7 @@ io.on('connection', (socket) => {
     if (!allowEvent(socket, ack)) return;
     withMembership(socket, ({ room, player }) => {
       try {
-        exchangePlayerChip(room.game, player.id, payload.denomination);
+        exchangePlayerChip(room.game, player.id, payload.denomination, payload.direction ?? 'down');
         emitRoom(room);
         ack({ ok: true });
       } catch (error) {

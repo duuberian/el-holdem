@@ -56,6 +56,20 @@ export function exchangeChip(rack, denomination) {
   return changed;
 }
 
+export function combineChip(rack, denomination) {
+  const changed = copyRack(rack);
+  const value = Number(denomination);
+  const index = CHIP_DENOMINATIONS.indexOf(value);
+  if (index < 0) throw new Error('Unknown chip denomination');
+  if (index === CHIP_DENOMINATIONS.length - 1) throw new Error('There is no smaller chip to combine');
+  const smaller = CHIP_DENOMINATIONS[index + 1];
+  const needed = value / smaller;
+  if (changed[smaller] < needed) throw new Error(`You need ${needed} chips worth ${smaller} to make one ${value}`);
+  changed[smaller] -= needed;
+  changed[value] += 1;
+  return changed;
+}
+
 export function spendChips(rack, amount) {
   let remaining = checkedAmount(amount);
   let available = copyRack(rack);

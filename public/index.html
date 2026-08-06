@@ -7,7 +7,7 @@
   <meta name="description" content="Private, live Texas Hold'em for family and friends.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=8">
+  <link rel="stylesheet" href="/style.css?v=9">
   <title>EL Holdem</title>
 </head>
 <body>
@@ -42,7 +42,7 @@
 
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
-        <span id="app-version" class="version-badge">v0.8</span>
+        <span id="app-version" class="version-badge">v0.9</span>
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
         <button id="chip-bank-button" class="chip-bank-button" aria-label="Open chip bank"><span class="mini-chip">20</span></button>
         <button id="sound-toggle" class="sound-toggle" aria-label="Mute game sounds" aria-pressed="false">SFX</button>
@@ -95,7 +95,7 @@
           <div><span>YOUR CHIP BANK</span><strong id="chip-bank-total">1,000</strong></div>
           <button id="chip-bank-close" aria-label="Close chip bank">×</button>
         </div>
-        <p>Tap a chip to change it into smaller chips of equal value.</p>
+        <p>Tap a chip to break it down, or use ↑ to combine smaller chips into one larger chip.</p>
         <div id="chip-bank-rack" class="chip-bank-rack"></div>
         <div class="chip-bank-note"><span>♻</span> The dealer automatically makes exact change when you bet.</div>
       </section>
@@ -127,6 +127,6 @@
     </section>
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/client.js?v=8"></script>
+  <script type="module" src="/client.js?v=9"></script>
 </body>
 </html>
