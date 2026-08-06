@@ -1,10 +1,10 @@
-# Railway Hold’em
+# EL Holdem
 
 A mobile-first, private Texas Hold’em table for 2–8 family members on separate devices. The Node server owns the room, shuffled deck, hidden cards, turn order, bets, side pots, and showdown; browsers only receive the state they are allowed to see.
 
-**Play:** https://poker.178.156.221.203.sslip.io
+**Play:** https://el-holdem.178.156.221.203.sslip.io
 
-**Source:** https://github.com/duuberian/railway-holdem
+**Source:** https://github.com/duuberian/el-holdem
 
 ## Features
 
@@ -33,8 +33,8 @@ Open `http://localhost:3000`. For phones on the same hotspot/Wi-Fi, open `http:/
 ## Run with Docker
 
 ```bash
-docker build -t railway-holdem .
-docker run --rm -p 3000:3000 railway-holdem
+docker build -t el-holdem .
+docker run --rm -p 3000:3000 el-holdem
 ```
 
 For use on a train across separate mobile connections, deploy the container to any HTTPS-capable Node/container host. The server is stateless beyond process memory, so use one instance and disable autoscaling for this family MVP.

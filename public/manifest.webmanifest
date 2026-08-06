@@ -1,6 +1,6 @@
 {
-  "name": "Railway Hold’em",
-  "short_name": "Hold’em",
+  "name": "EL Holdem",
+  "short_name": "EL Holdem",
   "description": "Private live Texas Hold'em for family and friends",
   "start_url": "/",
   "display": "standalone",

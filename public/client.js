@@ -20,7 +20,7 @@ let toastTimer;
 
 const queryRoom = new URLSearchParams(location.search).get('room')?.toUpperCase() ?? '';
 if (queryRoom) roomInput.value = queryRoom;
-nameInput.value = localStorage.getItem('railway:name') ?? '';
+nameInput.value = localStorage.getItem('el-holdem:name') ?? '';
 
 function showToast(message, timeout = 2200) {
   clearTimeout(toastTimer);
@@ -35,8 +35,8 @@ function setBusy(busy) {
 
 function saveSession(code, token, name) {
   activeCode = code;
-  localStorage.setItem('railway:name', name);
-  localStorage.setItem(`railway:token:${code}`, token);
+  localStorage.setItem('el-holdem:name', name);
+  localStorage.setItem(`el-holdem:token:${code}`, token);
   history.replaceState(null, '', `/?room=${code}`);
 }
 
@@ -51,7 +51,7 @@ function submitJoin(code, name, automatic = false) {
     return;
   }
   setBusy(true);
-  const token = localStorage.getItem(`railway:token:${code}`);
+  const token = localStorage.getItem(`el-holdem:token:${code}`);
   socket.emit('join-room', { code, name, token }, (reply) => {
     setBusy(false);
     reconnecting = false;
@@ -108,7 +108,7 @@ socket.on('connect', () => {
   $('#connection span').textContent = 'Live';
   if (activeCode && !reconnecting) {
     reconnecting = true;
-    submitJoin(activeCode, localStorage.getItem('railway:name') ?? 'Player', true);
+    submitJoin(activeCode, localStorage.getItem('el-holdem:name') ?? 'Player', true);
   }
 });
 
@@ -368,7 +368,7 @@ socket.on('reaction', ({ playerId, name, emoji }) => {
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
 
-if (queryRoom && nameInput.value && localStorage.getItem(`railway:token:${queryRoom}`)) {
+if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;
   submitJoin(queryRoom, nameInput.value, true);
 }
