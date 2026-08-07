@@ -1020,7 +1020,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=16'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=17'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

@@ -33,6 +33,7 @@ await solo.getByText('Test Bot 3', { exact: false }).first().waitFor();
 if (await solo.locator('.player').count() !== 4) throw new Error('Solo test table did not create three automated opponents');
 await solo.getByRole('button', { name: 'Deal the cards' }).click();
 await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
+await solo.screenshot({ path: new URL('side-bets-preflop-mobile.png', out).pathname, fullPage: true });
 for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
   const check = solo.locator('#action-buttons button:has-text("Check")').first();
   const call = solo.locator('#action-buttons button:has-text("Call")').first();
@@ -67,6 +68,28 @@ const rightSoloSeat = soloSeats.find(({ classes }) => classes.includes('side-rig
 const horizontalOpponents = soloSeats.filter(({ name, classes }) => name && !name.includes('YOU') && !classes.includes('side-player'));
 if (soloSeats.length !== 4 || soloSeats.some(({ left, right, viewportWidth }) => left < 0 || right > viewportWidth)) throw new Error(`Four-player Solo seats are clipped outside the mobile viewport: ${JSON.stringify(soloSeats)}`);
 if (!leftSoloSeat?.transform.includes('rotate(90deg)') || !rightSoloSeat?.transform.includes('rotate(-90deg)') || horizontalOpponents.length !== 1) throw new Error(`Left/right seats are not vertically oriented while the top seat stays horizontal: ${JSON.stringify(soloSeats)}`);
+const sideSeatGeometry = await solo.evaluate(() => [...document.querySelectorAll('.player.side-player')].map((player) => {
+  const seat = player.getBoundingClientRect();
+  const name = player.querySelector('.player-name');
+  const nameRect = name.getBoundingClientRect();
+  const probe = document.createElement('div');
+  probe.className = 'bet-chip';
+  probe.style.pointerEvents = 'none';
+  player.append(probe);
+  const bet = probe.getBoundingClientRect();
+  probe.remove();
+  return {
+    side: player.classList.contains('side-left') ? 'left' : 'right',
+    seatCenter: seat.left + seat.width / 2,
+    betCenter: bet.left + bet.width / 2,
+    name: name.textContent.trim(),
+    nameRect: nameRect.toJSON(),
+    nameDisplay: getComputedStyle(name).display,
+    viewportWidth: innerWidth,
+  };
+}));
+if (sideSeatGeometry.length !== 2 || sideSeatGeometry.some(({ side, seatCenter, betCenter }) => side === 'left' ? betCenter <= seatCenter : betCenter >= seatCenter)) throw new Error(`Side-player committed bets are not on the table-facing edge: ${JSON.stringify(sideSeatGeometry)}`);
+if (sideSeatGeometry.some(({ name, nameRect, nameDisplay, viewportWidth }) => !name || nameDisplay === 'none' || nameRect.height < 50 || nameRect.width < 10 || nameRect.left < 0 || nameRect.right > viewportWidth)) throw new Error(`Side-player name is not fully visible: ${JSON.stringify(sideSeatGeometry)}`);
 await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
@@ -78,7 +101,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.6' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.7' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);

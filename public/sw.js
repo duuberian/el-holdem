@@ -1,5 +1,5 @@
-const CACHE = 'el-holdem-v16';
-const SHELL = ['/', '/style.css?v=16', '/client.js?v=16', '/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'el-holdem-v17';
+const SHELL = ['/', '/style.css?v=17', '/client.js?v=17', '/icon.svg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

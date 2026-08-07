@@ -185,3 +185,7 @@ label{display:block;color:#d7cdea;margin:0 0 6px 2px;font-size:11px}input{width:
 .controls.showdown-decision .action-button.danger{background:#bb315d;color:#fff}
 .chip-bank{z-index:58}
 @media(max-width:360px){.avatar{width:94px!important}.avatar-bankroll .chip-pile{transform:scale(.78)}.player-bet-label{font-size:7px}.winner-summary{gap:2px 5px}}
+/* Side seats face inward: identity stays exposed while committed chips sit nearest the felt. */
+.side-player .player-name{position:relative;z-index:24;width:max-content;max-width:none;margin:4px auto 0;padding:3px 5px;overflow:visible!important;background:#09090d;color:#fff}
+.side-player .bet-chip{top:-20px;z-index:14}
+.side-player .player-bet-label{position:absolute;z-index:16;top:-12px;left:50%;width:max-content;max-width:none;margin:0;transform:translateX(-50%)}
