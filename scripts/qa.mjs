@@ -62,11 +62,11 @@ const soloSeats = await solo.locator('.player').evaluateAll((players) => players
   const rect = player.getBoundingClientRect();
   return { name: player.querySelector('.player-name')?.textContent.trim(), classes: player.className, transform: player.style.transform, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight };
 }));
-const leftSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 1'));
-const topSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 2'));
-const rightSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 3'));
+const leftSoloSeat = soloSeats.find(({ classes }) => classes.includes('side-left'));
+const rightSoloSeat = soloSeats.find(({ classes }) => classes.includes('side-right'));
+const horizontalOpponents = soloSeats.filter(({ name, classes }) => name && !name.includes('YOU') && !classes.includes('side-player'));
 if (soloSeats.length !== 4 || soloSeats.some(({ left, right, viewportWidth }) => left < 0 || right > viewportWidth)) throw new Error(`Four-player Solo seats are clipped outside the mobile viewport: ${JSON.stringify(soloSeats)}`);
-if (!leftSoloSeat?.classes.includes('side-left') || !leftSoloSeat.transform.includes('rotate(90deg)') || !rightSoloSeat?.classes.includes('side-right') || !rightSoloSeat.transform.includes('rotate(-90deg)') || topSoloSeat?.classes.includes('side-player')) throw new Error(`Left/right seats are not vertically oriented while the top seat stays horizontal: ${JSON.stringify(soloSeats)}`);
+if (!leftSoloSeat?.transform.includes('rotate(90deg)') || !rightSoloSeat?.transform.includes('rotate(-90deg)') || horizontalOpponents.length !== 1) throw new Error(`Left/right seats are not vertically oriented while the top seat stays horizontal: ${JSON.stringify(soloSeats)}`);
 await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
