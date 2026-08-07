@@ -189,3 +189,17 @@ label{display:block;color:#d7cdea;margin:0 0 6px 2px;font-size:11px}input{width:
 .side-player .player-name{position:relative;z-index:24;width:max-content;max-width:none;margin:4px auto 0;padding:3px 5px;overflow:visible!important;background:#09090d;color:#fff}
 .side-player .bet-chip{top:-20px;z-index:14}
 .side-player .player-bet-label{position:absolute;z-index:16;top:-12px;left:50%;width:max-content;max-width:none;margin:0;transform:translateX(-50%)}
+/* v1.8: exposed local bankroll, table-facing top bets, and unmistakable action feedback. */
+.player.self .hole-cards{top:-72px!important}
+.player.self .reveal-cards{top:-44px!important}
+.player:not(.self):not(.side-player) .player-stack{margin-bottom:2px}
+.player:not(.self):not(.side-player) .player-bet-label{position:absolute;top:91px;left:calc(50% + 60px);width:max-content;max-width:none;margin:0;transform:translateX(-50%)}
+.player:not(.self):not(.side-player) .bet-chip{top:105px;left:calc(50% + 60px)}
+.bet-chip.bet-committed{animation:bet-slam .62s steps(6,end)}
+@keyframes bet-slam{0%{opacity:0;transform:translate(-50%,-55px) scale(1.8)}35%{opacity:1;transform:translate(-50%,-24px) scale(1.45) rotate(-7deg)}65%{transform:translate(-50%,7px) scale(.82) rotate(4deg)}82%{transform:translate(-50%,-5px) scale(1.12)}100%{transform:translate(-50%,0) scale(1)}}
+.player.turn{z-index:30!important}
+@keyframes turn-pulse{0%,100%{filter:brightness(1);box-shadow:0 3px 0 #f0b72f,0 0 0 2px #08080c,0 0 0 5px #f0b72f}50%{filter:brightness(1.65);box-shadow:0 5px 0 #f0b72f,0 0 0 4px #08080c,0 0 0 10px #ffd052,0 0 28px 12px #ffd052aa}}
+.player.turn .avatar{animation:turn-pulse .58s steps(2,end) infinite!important}
+.controls.your-turn{border-color:#ffd052!important;animation:turn-controls .58s steps(2,end) infinite}
+.controls.your-turn::before{content:'YOUR TURN';position:absolute;left:50%;top:-25px;transform:translateX(-50%);padding:5px 10px;border:3px solid #08080c;background:#ffd052;color:#17121f;font:700 9px 'Press Start 2P';text-shadow:none;box-shadow:3px 3px #08080c;white-space:nowrap}
+@keyframes turn-controls{0%,100%{box-shadow:0 -3px 0 #8b6515,0 0 0 #ffd052}50%{box-shadow:0 -7px 0 #ffd052,0 -13px 20px #ffd05299}}

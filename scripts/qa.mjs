@@ -33,6 +33,15 @@ await solo.getByText('Test Bot 3', { exact: false }).first().waitFor();
 if (await solo.locator('.player').count() !== 4) throw new Error('Solo test table did not create three automated opponents');
 await solo.getByRole('button', { name: 'Deal the cards' }).click();
 await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
+const betAnimation = await solo.locator('.bet-chip.bet-committed').first().evaluate((bet) => getComputedStyle(bet).animationName);
+if (!betAnimation.includes('bet-slam')) throw new Error(`Newly committed chips do not use the exaggerated bet animation: ${betAnimation}`);
+await solo.waitForTimeout(700);
+const topBlindGeometry = await solo.locator('.player:not(.self):not(.side-player):has(.bet-chip)').evaluate((player) => ({
+  stack: player.querySelector('.player-stack').getBoundingClientRect().toJSON(),
+  label: player.querySelector('.player-bet-label').getBoundingClientRect().toJSON(),
+  chips: player.querySelector('.bet-chip').getBoundingClientRect().toJSON(),
+}));
+if (topBlindGeometry.label.top < topBlindGeometry.stack.bottom - 1 || topBlindGeometry.chips.top < topBlindGeometry.stack.bottom - 1) throw new Error(`Top seat bet must sit below its stack toward the table: ${JSON.stringify(topBlindGeometry)}`);
 await solo.screenshot({ path: new URL('side-bets-preflop-mobile.png', out).pathname, fullPage: true });
 for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
   const check = solo.locator('#action-buttons button:has-text("Check")').first();
@@ -43,6 +52,13 @@ for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()
 }
 if ((await solo.locator('#phase').textContent()).trim() !== 'FLOP') throw new Error('Solo Test Bot did not automatically complete preflop play');
 await solo.locator('#action-buttons button').filter({ hasText: /Check|Call/ }).first().waitFor({ timeout: 6000 });
+const turnFeedback = await solo.evaluate(() => ({
+  controlsClass: document.querySelector('#controls').className,
+  controlsAnimation: getComputedStyle(document.querySelector('#controls')).animationName,
+  label: getComputedStyle(document.querySelector('#controls'), '::before').content,
+  seatAnimation: getComputedStyle(document.querySelector('.player.self .avatar')).animationName,
+}));
+if (!turnFeedback.controlsClass.includes('your-turn') || !turnFeedback.controlsAnimation.includes('turn-controls') || !turnFeedback.label.includes('YOUR TURN') || !turnFeedback.seatAnimation.includes('turn-pulse')) throw new Error(`Local turn feedback is not prominent: ${JSON.stringify(turnFeedback)}`);
 await solo.reload({ waitUntil: 'networkidle' });
 await solo.locator('#game:not(.hidden)').waitFor({ timeout: 5000 });
 await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).first().waitFor({ timeout: 5000 });
@@ -90,6 +106,18 @@ const sideSeatGeometry = await solo.evaluate(() => [...document.querySelectorAll
 }));
 if (sideSeatGeometry.length !== 2 || sideSeatGeometry.some(({ side, seatCenter, betCenter }) => side === 'left' ? betCenter <= seatCenter : betCenter >= seatCenter)) throw new Error(`Side-player committed bets are not on the table-facing edge: ${JSON.stringify(sideSeatGeometry)}`);
 if (sideSeatGeometry.some(({ name, nameRect, nameDisplay, viewportWidth }) => !name || nameDisplay === 'none' || nameRect.height < 50 || nameRect.width < 10 || nameRect.left < 0 || nameRect.right > viewportWidth)) throw new Error(`Side-player name is not fully visible: ${JSON.stringify(sideSeatGeometry)}`);
+const topSeatOrder = await solo.locator('.player:not(.self):not(.side-player)').evaluate((player) => ({
+  stack: [...player.children].findIndex((child) => child.classList.contains('player-stack')),
+  bet: [...player.children].findIndex((child) => child.classList.contains('player-bet-label')),
+}));
+if (topSeatOrder.stack < 0 || topSeatOrder.bet < 0 || topSeatOrder.stack > topSeatOrder.bet) throw new Error(`Top player stack must appear before its table-facing bet: ${JSON.stringify(topSeatOrder)}`);
+const selfChipVisibility = await solo.evaluate(() => {
+  const cards = [...document.querySelectorAll('.player.self .hole-cards .card')].map((element) => element.getBoundingClientRect());
+  const piles = [...document.querySelectorAll('.player.self .avatar-bankroll .chip-pile')].map((element) => element.getBoundingClientRect());
+  const overlaps = piles.flatMap((pile) => cards.filter((card) => pile.left < card.right && pile.right > card.left && pile.top < card.bottom && pile.bottom > card.top));
+  return { cards: cards.map((rect) => rect.toJSON()), piles: piles.map((rect) => rect.toJSON()), overlaps: overlaps.length };
+});
+if (!selfChipVisibility.piles.length || selfChipVisibility.overlaps) throw new Error(`Local cards obscure the physical bankroll piles: ${JSON.stringify(selfChipVisibility)}`);
 await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
@@ -101,7 +129,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.7' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.8' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
@@ -241,6 +269,8 @@ const postedBetOwnership = await host.locator('.player:has(.bet-chip)').evaluate
   const nameRect = name?.getBoundingClientRect();
   const amountRect = amount?.getBoundingClientRect();
   const amountStyle = amount ? getComputedStyle(amount) : null;
+  const stackRect = player.querySelector('.player-stack')?.getBoundingClientRect();
+  const betRect = bet?.getBoundingClientRect();
   const cardsRect = player.querySelector('.hole-cards')?.getBoundingClientRect();
   const overlapArea = (a, b) => (!a || !b ? 0 : Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)));
   return {
@@ -248,6 +278,9 @@ const postedBetOwnership = await host.locator('.player:has(.bet-chip)').evaluate
     aria: bet?.getAttribute('aria-label') ?? '',
     amount: amount?.textContent.trim() ?? '',
     amountUnderName: Boolean(nameRect && amountRect && amountRect.top >= nameRect.bottom - 1 && Math.abs((amountRect.left + amountRect.width / 2) - (nameRect.left + nameRect.width / 2)) < 3),
+    amountPositioned: Boolean(amountRect && (player.classList.contains('self')
+      ? amountRect.top >= nameRect.bottom - 1
+      : amountRect.top >= stackRect.bottom - 1 && Math.abs((amountRect.left + amountRect.width / 2) - (betRect.left + betRect.width / 2)) < 3)),
     unboxed: Boolean(amountStyle && amountStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && ['0px', 'none'].includes(amountStyle.borderTopWidth)),
     floatingTotalCount: bet?.querySelectorAll('.bet-owner, .bet-total').length ?? -1,
     smallPileLabelsVisible: [...(bet?.querySelectorAll('.chip-value, .pile-count') ?? [])].some((label) => {
@@ -257,8 +290,8 @@ const postedBetOwnership = await host.locator('.player:has(.bet-chip)').evaluate
     overlapWithCards: overlapArea(amountRect, cardsRect),
   };
 }));
-if (postedBetOwnership.length < 2 || postedBetOwnership.some(({ name, aria, amount, amountUnderName, unboxed, floatingTotalCount, smallPileLabelsVisible, overlapWithCards }) => !aria.includes(`${name} has bet`) || !/^BET [\d,]+$/.test(amount) || !amountUnderName || !unboxed || floatingTotalCount !== 0 || smallPileLabelsVisible || overlapWithCards > 1)) {
-  throw new Error(`Bet totals are not clearly printed under each player name without a box: ${JSON.stringify(postedBetOwnership)}`);
+if (postedBetOwnership.length < 2 || postedBetOwnership.some(({ name, aria, amount, amountPositioned, unboxed, floatingTotalCount, smallPileLabelsVisible, overlapWithCards }) => !aria.includes(`${name} has bet`) || !/^BET [\d,]+$/.test(amount) || !amountPositioned || !unboxed || floatingTotalCount !== 0 || smallPileLabelsVisible || overlapWithCards > 1)) {
+  throw new Error(`Bet totals are not clearly positioned on the table-facing edge without a box: ${JSON.stringify(postedBetOwnership)}`);
 }
 const opponentMarkers = await host.locator('.player:not(.self)').evaluateAll((players) => players.map((player) => ({
   bankroll: player.querySelector('.avatar-bankroll')?.getAttribute('aria-label') ?? '',

@@ -24,7 +24,9 @@ let cardsRevealed = false;
 let lastHandNumber = 0;
 let lastCommunityCount = 0;
 let lastActorId = null;
+let lastPhase = 'waiting';
 let lastResultKey = '';
+let lastPlayerBets = new Map();
 let soundEnabled = localStorage.getItem('el-holdem:sound') !== 'muted';
 let audioContext = null;
 let toastTimer;
@@ -110,8 +112,9 @@ function playSound(kind) {
       tone(620, 0.08, 'sine', 0.025);
       tone(900, 0.08, 'sine', 0.02, 0.07);
     } else if (kind === 'turn') {
-      tone(440, 0.07, 'square', 0.018);
-      tone(660, 0.09, 'square', 0.02, 0.08);
+      tone(440, 0.11, 'square', 0.05);
+      tone(660, 0.12, 'square', 0.055, 0.1);
+      tone(880, 0.16, 'square', 0.06, 0.22);
     } else if (kind === 'win') {
       tone(523, 0.11, 'square', 0.022);
       tone(659, 0.11, 'square', 0.022, 0.1);
@@ -623,11 +626,12 @@ function playerElement(player, self, position) {
   const stack = document.createElement('div');
   stack.className = 'player-stack';
   stack.textContent = `STACK ${player.stack.toLocaleString()}${player.allIn ? ' · ALL IN' : ''}`;
-  node.append(avatar, name, betLabel, stack);
+  if (!self && !position.orientation) node.append(avatar, name, stack, betLabel);
+  else node.append(avatar, name, betLabel, stack);
   if (self) node.append(cards, revealCards);
   if (player.bet > 0) {
     const bet = document.createElement('div');
-    bet.className = 'bet-chip';
+    bet.className = `bet-chip${player.bet > (lastPlayerBets.get(player.id) ?? 0) ? ' bet-committed' : ''}`;
     bet.setAttribute('aria-label', `${player.name} has bet ${player.bet.toLocaleString()}`);
     for (const { denomination, count } of chipBreakdown(player.bet)) {
       bet.append(chipPile(denomination, count));
@@ -736,6 +740,7 @@ function renderControls() {
   const actions = snapshot.state.legalActions;
   const bar = $('#action-buttons');
   bar.replaceChildren();
+  controls.classList.toggle('your-turn', snapshot.state.currentActor === snapshot.selfId && actions.length > 0);
   controls.classList.toggle('showdown-decision', actions.includes('show') || actions.includes('muck'));
   const live = snapshot.state.phase !== 'waiting';
   controls.classList.toggle('hidden', !live);
@@ -857,7 +862,7 @@ socket.on('state', (data) => {
   } else if (data.state.community.length > lastCommunityCount) {
     playSound('paper');
   }
-  if (data.state.currentActor === data.selfId && lastActorId !== data.selfId) playSound('turn');
+  if (data.state.currentActor === data.selfId && (lastActorId !== data.selfId || lastPhase !== data.state.phase)) playSound('turn');
   const resultKey = data.state.result ? JSON.stringify(data.state.result) : '';
   if (resultKey && resultKey !== lastResultKey) {
     const winners = data.state.result.winners ?? [];
@@ -866,11 +871,13 @@ socket.on('state', (data) => {
   lastHandNumber = data.state.handNumber;
   lastCommunityCount = data.state.community.length;
   lastActorId = data.state.currentActor;
+  lastPhase = data.state.phase;
   lastResultKey = resultKey;
   snapshot = data;
   activeCode = data.roomCode;
   enterGame();
   render();
+  lastPlayerBets = new Map(data.state.players.map((player) => [player.id, player.bet]));
 });
 
 function setCardsRevealed(visible) {
@@ -1020,7 +1027,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=17'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=18'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;
