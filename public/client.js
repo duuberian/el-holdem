@@ -609,12 +609,6 @@ function playerElement(player, self, position) {
     dealer.textContent = 'DEALER';
     avatar.append(dealer);
   }
-  if (snapshot.state.currentActor === player.id) {
-    const acting = document.createElement('b');
-    acting.className = 'acting-marker';
-    acting.textContent = 'ACTING';
-    avatar.append(acting);
-  }
 
   const cards = document.createElement('div');
   cards.className = 'hole-cards';
@@ -659,7 +653,7 @@ function renderPlayers() {
     (_, offset) => snapshot.state.players[(selfIndex + offset + 1) % snapshot.state.players.length],
   );
   opponents.forEach((player, index) => {
-    const angle = opponents.length === 1 ? 1.5 * Math.PI : 2 * Math.PI - (Math.PI * index) / (opponents.length - 1);
+    const angle = opponents.length === 1 ? 1.5 * Math.PI : Math.PI + (Math.PI * index) / (opponents.length - 1);
     const x = 50 + 35 * Math.cos(angle);
     const y = 53 + 34 * Math.sin(angle);
     const orientation = x < 30 ? 'left' : x > 70 ? 'right' : null;

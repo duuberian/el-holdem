@@ -199,6 +199,8 @@ label{display:block;color:#d7cdea;margin:0 0 6px 2px;font-size:11px}input{width:
 .player.turn{z-index:30!important}
 @keyframes turn-pulse{0%,100%{filter:brightness(1);box-shadow:0 3px 0 #f0b72f,0 0 0 2px #08080c,0 0 0 5px #f0b72f}50%{filter:brightness(1.65);box-shadow:0 5px 0 #f0b72f,0 0 0 4px #08080c,0 0 0 10px #ffd052,0 0 28px 12px #ffd052aa}}
 .player.turn .avatar{animation:turn-pulse .58s steps(2,end) infinite!important}
+.player.turn .player-name{color:#fff7bd!important;animation:turn-name-glow .58s steps(2,end) infinite!important}
+@keyframes turn-name-glow{0%,100%{text-shadow:2px 2px #000,0 0 3px #ffd052}50%{color:#fff!important;text-shadow:2px 2px #000,0 0 7px #ffd052,0 0 14px #ffd052,0 0 22px #ffd052}}
 .controls.your-turn{border-color:#ffd052!important;animation:turn-controls .58s steps(2,end) infinite}
 .controls.your-turn::before{content:'YOUR TURN';position:absolute;left:50%;top:-25px;transform:translateX(-50%);padding:5px 10px;border:3px solid #08080c;background:#ffd052;color:#17121f;font:700 9px 'Press Start 2P';text-shadow:none;box-shadow:3px 3px #08080c;white-space:nowrap}
 @keyframes turn-controls{0%,100%{box-shadow:0 -3px 0 #8b6515,0 0 0 #ffd052}50%{box-shadow:0 -7px 0 #ffd052,0 -13px 20px #ffd05299}}
@@ -206,7 +208,7 @@ label{display:block;color:#d7cdea;margin:0 0 6px 2px;font-size:11px}input{width:
 /* v1.9: clockwise table order, persistent street identity, and reliable sheets. */
 .phase{z-index:18;top:47%;bottom:auto;left:50%;transform:translate(-50%,-50%);width:max-content;max-width:92%;padding:5px 8px;border:2px solid #08080c;background:#ffd052;color:#17131d;font:400 8px/1.25 'Press Start 2P';letter-spacing:0;box-shadow:3px 3px #08080c;white-space:nowrap}
 .dealer{z-index:22;right:-15px!important;bottom:auto!important;top:-14px!important;width:auto!important;min-width:36px!important;height:18px!important;padding:3px 5px!important;border:2px solid #08080c!important;border-radius:0!important;background:#fff6cf!important;color:#17131d!important;font:400 6px/1 'Press Start 2P'!important;box-shadow:2px 2px #08080c!important;animation:dealer-pop .5s steps(4)}
-.acting-marker{position:absolute;z-index:24;left:50%;top:-30px;transform:translateX(-50%);padding:4px 6px;border:2px solid #08080c;background:#ff5f76;color:#fff;font:400 6px/1 'Press Start 2P';box-shadow:2px 2px #08080c;white-space:nowrap;animation:turn-pulse .7s steps(2) infinite}
+
 @keyframes dealer-pop{0%{transform:scale(1.8);opacity:0}100%{transform:scale(1);opacity:1}}
 .raise-panel,.chip-bank{z-index:80}
 #raise-cancel.sheet-close,#chip-bank-close.sheet-close{position:relative;z-index:85;display:grid;place-items:center;width:52px!important;height:52px!important;min-width:52px!important;min-height:52px!important;padding:0!important;border:3px solid #634878!important;background:#140d2b!important;color:#fff!important;font:700 25px/1 Arial,sans-serif!important;box-shadow:3px 3px #070512!important;touch-action:manipulation;pointer-events:auto}

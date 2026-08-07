@@ -57,8 +57,10 @@ const turnFeedback = await solo.evaluate(() => ({
   controlsAnimation: getComputedStyle(document.querySelector('#controls')).animationName,
   label: getComputedStyle(document.querySelector('#controls'), '::before').content,
   seatAnimation: getComputedStyle(document.querySelector('.player.self .avatar')).animationName,
+  nameAnimation: getComputedStyle(document.querySelector('.player.turn .player-name')).animationName,
+  actingMarkers: document.querySelectorAll('.acting-marker').length,
 }));
-if (!turnFeedback.controlsClass.includes('your-turn') || !turnFeedback.controlsAnimation.includes('turn-controls') || !turnFeedback.label.includes('YOUR TURN') || !turnFeedback.seatAnimation.includes('turn-pulse')) throw new Error(`Local turn feedback is not prominent: ${JSON.stringify(turnFeedback)}`);
+if (!turnFeedback.controlsClass.includes('your-turn') || !turnFeedback.controlsAnimation.includes('turn-controls') || !turnFeedback.label.includes('YOUR TURN') || !turnFeedback.seatAnimation.includes('turn-pulse') || !turnFeedback.nameAnimation.includes('turn-name-glow') || turnFeedback.actingMarkers) throw new Error(`Turn feedback must glow the player's name without an ACTING badge: ${JSON.stringify(turnFeedback)}`);
 await solo.reload({ waitUntil: 'networkidle' });
 await solo.locator('#game:not(.hidden)').waitFor({ timeout: 5000 });
 await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).first().waitFor({ timeout: 5000 });
@@ -85,7 +87,7 @@ const horizontalOpponents = soloSeats.filter(({ name, classes }) => name && !nam
 if (soloSeats.length !== 4 || soloSeats.some(({ left, right, viewportWidth }) => left < 0 || right > viewportWidth)) throw new Error(`Four-player Solo seats are clipped outside the mobile viewport: ${JSON.stringify(soloSeats)}`);
 if (!leftSoloSeat?.transform.includes('rotate(90deg)') || !rightSoloSeat?.transform.includes('rotate(-90deg)') || horizontalOpponents.length !== 1) throw new Error(`Left/right seats are not vertically oriented while the top seat stays horizontal: ${JSON.stringify(soloSeats)}`);
 const selfSoloSeat = soloSeats.find(({ name }) => name?.includes('YOU'));
-if (rightSoloSeat.seat !== (selfSoloSeat.seat + 1) % 4 || horizontalOpponents[0].seat !== (selfSoloSeat.seat + 2) % 4 || leftSoloSeat.seat !== (selfSoloSeat.seat + 3) % 4) throw new Error(`Seats do not progress clockwise from self through right, top, and left: ${JSON.stringify(soloSeats)}`);
+if (leftSoloSeat.seat !== (selfSoloSeat.seat + 1) % 4 || horizontalOpponents[0].seat !== (selfSoloSeat.seat + 2) % 4 || rightSoloSeat.seat !== (selfSoloSeat.seat + 3) % 4) throw new Error(`Seats do not progress clockwise from self through left, top, and right: ${JSON.stringify(soloSeats)}`);
 const sideSeatGeometry = await solo.evaluate(() => [...document.querySelectorAll('.player.side-player')].map((player) => {
   const seat = player.getBoundingClientRect();
   const name = player.querySelector('.player-name');
@@ -140,7 +142,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.10' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.11' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
