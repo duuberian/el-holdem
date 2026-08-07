@@ -30,20 +30,13 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.1' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.2' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
 await host.screenshot({ path: new URL('lobby-waiting-mobile.png', out).pathname, fullPage: true });
 if (!/^[A-Z0-9]{6}$/.test(roomCode)) throw new Error(`Unexpected room code: ${roomCode}`);
-
-await host.getByRole('button', { name: 'Open chip bank' }).click();
-await host.locator('#chip-bank:not(.hidden)').waitFor();
-await host.getByRole('button', { name: 'Break one 500 chip into smaller chips' }).click();
-await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '×4' }).waitFor();
-await host.locator('[data-chip-bank="100"] .pile-count').filter({ hasText: '×5' }).waitFor();
-await host.screenshot({ path: new URL('chip-bank-mobile.png', out).pathname, fullPage: true });
-await host.getByRole('button', { name: 'Close chip bank' }).click();
+if (await host.locator('#chip-bank-button').evaluate((button) => button.parentElement?.id) !== 'controls') throw new Error('Chip bank control is not beside the reaction button');
 
 await guest.goto(`${base}/?room=${roomCode}`, { waitUntil: 'networkidle' });
 await guest.getByLabel('Your name').fill('Family');
@@ -65,6 +58,14 @@ await guest.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFo
 await host.getByRole('button', { name: 'Deal the cards' }).click();
 await host.locator('.player.self .hole-cards .card.back').first().waitFor();
 await guest.locator('.player.self .hole-cards .card.back').first().waitFor();
+await host.getByRole('button', { name: 'Open chip bank' }).click();
+await host.locator('#chip-bank:not(.hidden)').waitFor();
+const chipBankValueBefore = await host.locator('#chip-bank-total').textContent();
+await host.getByRole('button', { name: 'Break one 500 chip into smaller chips' }).click();
+await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '500 ×4' }).waitFor();
+if (await host.locator('#chip-bank-total').textContent() !== chipBankValueBefore) throw new Error('In-hand chip exchange changed bankroll value');
+await host.screenshot({ path: new URL('chip-bank-mobile.png', out).pathname, fullPage: true });
+await host.getByRole('button', { name: 'Close chip bank' }).click();
 for (const page of [host, guest]) {
   const rack = page.locator('#self-bankroll:not(.hidden)');
   await rack.waitFor();
@@ -73,7 +74,9 @@ for (const page of [host, guest]) {
   if (rackTotal !== stackTotal || rackTotal <= 0) throw new Error(`Persistent personal chip total does not match stack: ${rackTotal} vs ${stackTotal}`);
   if (await rack.locator('.bankroll-piles .chip-pile').count() < 1) throw new Error('Persistent personal chip piles are missing');
   const pileBox = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => pile.getBoundingClientRect().toJSON());
-  if (pileBox.width > 38 || pileBox.height > 48) throw new Error(`Personal chip piles are not compact: ${JSON.stringify(pileBox)}`);
+  if (pileBox.width > 110 || pileBox.height > 48) throw new Error(`Personal chip piles are not compact: ${JSON.stringify(pileBox)}`);
+  const pileLabel = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => ({ topValueDisplay: getComputedStyle(pile.querySelector('.pile-top .chip-value')).display, count: pile.querySelector('.pile-count').textContent.trim() }));
+  if (pileLabel.topValueDisplay !== 'none' || !/^\d[\d,]* ×\d+$/.test(pileLabel.count)) throw new Error(`Chip denomination was not moved off the ugly top cap: ${JSON.stringify(pileLabel)}`);
   const rackAndToast = await page.evaluate(() => {
     const rackRect = document.querySelector('#self-bankroll').getBoundingClientRect();
     const toastRect = document.querySelector('#toast:not(.hidden)')?.getBoundingClientRect();
@@ -107,9 +110,21 @@ for (const page of [host, guest]) {
       return area + Math.max(0, Math.min(button.right, rect.right) - Math.max(button.left, rect.left)) * Math.max(0, Math.min(button.bottom, rect.bottom) - Math.max(button.top, rect.top));
     }, 0) / (button.width * button.height);
   });
+  const coveredLabels = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('.player.self .hole-cards .card')].map((node) => node.getBoundingClientRect());
+    const targets = ['.player.self .player-name', '.player.self .player-stack', '#phase', '#board'];
+    const overlaps = targets.map((selector) => {
+      const node = document.querySelector(selector);
+      const rect = node.getBoundingClientRect();
+      const area = cards.reduce((sum, card) => sum + Math.max(0, Math.min(card.right, rect.right) - Math.max(card.left, rect.left)) * Math.max(0, Math.min(card.bottom, rect.bottom) - Math.max(card.top, rect.top)), 0);
+      return { selector, area, opacity: Number(getComputedStyle(node).opacity) };
+    });
+    return overlaps;
+  });
   const cardTravel = cardAfter.y - cardBefore.y;
   const buttonTravel = revealAfter.y - revealBox.y;
   if (cardTravel < 25 || buttonTravel < 25 || Math.abs(cardTravel - buttonTravel) > 4 || cardAfter.y < 0 || cardAfter.y + cardAfter.height > 664 || revealOverlap > 0.25) throw new Error(`Cards did not follow the pull control fully in view: ${JSON.stringify({ cardBefore, cardAfter, revealBox, revealAfter, revealOverlap })}`);
+  if (coveredLabels.some((target) => target.area > 1 || target.opacity < 0.9)) throw new Error(`Revealed cards cover or hide table labels: ${JSON.stringify(coveredLabels)}`);
   if (page === host) await page.screenshot({ path: new URL('cards-reveal-mobile.png', out).pathname, fullPage: true });
   await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
   if (await page.locator('.player.self .card:not(.back)').count() || await page.locator('#game').evaluate((game) => Number(game.style.getPropertyValue('--reveal-drag')))) throw new Error('Private cards stayed visible after reveal was released');
@@ -136,6 +151,8 @@ if (Math.abs(tableShape.width - tableShape.height) > 2 || tableShape.radius !== 
 const cardsBeforeRaise = await host.locator('.player.self .hole-cards').evaluate((cards) => cards.getBoundingClientRect().top);
 await host.getByRole('button', { name: 'Raise' }).click();
 await host.locator('#raise-panel:not(.hidden)').waitFor();
+const raiseChipOrder = await host.locator('#raise-chips [data-denomination]').evaluateAll((buttons) => buttons.map((button) => Number(button.dataset.denomination)));
+if (JSON.stringify(raiseChipOrder) !== JSON.stringify([500, 100, 20, 10, 5, 1])) throw new Error(`Raise chips are inverted: ${JSON.stringify(raiseChipOrder)}`);
 if (!(await host.locator('#controls').evaluate((node) => node.classList.contains('hidden')))) throw new Error('Normal actions stayed visible while arranging a raise');
 await guest.getByRole('button', { name: 'Open chip bank' }).click();
 for (let exchange = 0; exchange < 5; exchange += 1) await guest.locator('[data-chip-bank="500"]').click();
@@ -146,7 +163,7 @@ const splitPileLayout = await splitPile.evaluate((pile) => {
   const rect = pile.getBoundingClientRect();
   return { stacks: pile.querySelectorAll('.pile-stack').length, badgeText: pile.querySelector('.pile-count').textContent, badgeLeft: badge.left, badgeRight: badge.right, pileLeft: rect.left, pileRight: rect.right };
 });
-if (splitPileLayout.stacks !== 4 || splitPileLayout.badgeText !== '×29' || splitPileLayout.badgeLeft < splitPileLayout.pileLeft - 1 || splitPileLayout.badgeRight > splitPileLayout.pileRight + 1) throw new Error(`Tall chip count did not split into readable adjacent piles: ${JSON.stringify(splitPileLayout)}`);
+if (splitPileLayout.stacks !== 4 || splitPileLayout.badgeText !== '100 ×29' || splitPileLayout.badgeLeft < splitPileLayout.pileLeft - 1 || splitPileLayout.badgeRight > splitPileLayout.pileRight + 1) throw new Error(`Tall chip count did not split into readable adjacent piles: ${JSON.stringify(splitPileLayout)}`);
 const beforeCombineTotal = await guest.locator('#chip-bank-total').textContent();
 await guest.locator('[data-chip-combine="500"]').click();
 await guest.locator('#self-bankroll .chip-pile[data-denomination="100"] .pile-count', { hasText: '×24' }).waitFor();
@@ -287,8 +304,19 @@ for (const page of [host, guest]) {
     break;
   }
 }
-await host.getByRole('button', { name: 'Play again' }).waitFor();
-await host.getByRole('button', { name: 'Play again' }).click();
+await host.getByRole('button', { name: 'New round' }).waitFor();
+await host.getByRole('button', { name: 'New game' }).waitFor();
+await host.getByRole('button', { name: 'New round' }).click();
+await host.locator('.player.self .hole-cards .card.back').first().waitFor();
+for (const page of [host, guest]) {
+  const fold = page.locator('#action-buttons button:has-text("Fold")').first();
+  if (await fold.isVisible().catch(() => false)) {
+    await fold.click();
+    break;
+  }
+}
+await host.getByRole('button', { name: 'New game' }).waitFor();
+await host.getByRole('button', { name: 'New game' }).click();
 await host.locator('.player.self .hole-cards .card.back').first().waitFor();
 
 await guest.reload({ waitUntil: 'networkidle' });

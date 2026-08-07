@@ -294,7 +294,7 @@ function chipPile(denomination, count, interactive = false) {
   const visibleStacks = Math.min(4, Math.max(1, Math.ceil(count / chipsPerStack)));
   if (count === 0) pile.classList.add('empty-pile');
   pile.style.setProperty('--stack-count', visibleStacks);
-  pile.style.setProperty('--pile-width', `${visibleStacks * 26 - 2}px`);
+  pile.style.setProperty('--pile-width', `${Math.max(36, visibleStacks * 26 - 2)}px`);
   pile.setAttribute('aria-label', `${count} chip${count === 1 ? '' : 's'} worth ${denomination.toLocaleString()} each`);
 
   let remaining = count;
@@ -316,7 +316,7 @@ function chipPile(denomination, count, interactive = false) {
 
   const tally = document.createElement('span');
   tally.className = 'pile-count';
-  tally.textContent = `×${count}`;
+  tally.textContent = `${denomination.toLocaleString()} ×${count}`;
   pile.append(tally);
   return pile;
 }
@@ -457,7 +457,7 @@ function renderRaiseChips() {
   const self = snapshot?.state.players.find((player) => player.id === snapshot.selfId);
   if (!self || !provisionalRack) return;
   const remainingValue = CHIP_DENOMINATIONS.reduce((total, denomination) => total + denomination * (provisionalRack[denomination] ?? 0), 0);
-  for (const denomination of [...CHIP_DENOMINATIONS].reverse()) {
+  for (const denomination of CHIP_DENOMINATIONS) {
     const count = provisionalRack[denomination] ?? 0;
     const button = document.createElement('button');
     button.type = 'button';
@@ -684,7 +684,9 @@ function renderLobby() {
   const enoughPlayers = snapshot.state.players.filter((player) => player.connected && player.stack > 0).length >= 2;
   $('#deal').classList.toggle('hidden', !snapshot.isHost);
   $('#deal').disabled = !enoughPlayers;
-  $('#deal').textContent = snapshot.state.handNumber ? 'Play again' : 'Deal the cards';
+  $('#deal').textContent = snapshot.state.handNumber ? 'New round' : 'Deal the cards';
+  $('#new-game').classList.toggle('hidden', !snapshot.isHost || snapshot.state.handNumber === 0);
+  $('#new-game').disabled = !enoughPlayers;
   $('#host-note').classList.toggle('hidden', snapshot.isHost);
   const canSetStack = snapshot.isHost && snapshot.state.handNumber === 0;
   $('#host-stack-control').classList.toggle('hidden', !canSetStack);
@@ -813,6 +815,12 @@ $('#deal').addEventListener('click', () => {
   });
 });
 
+$('#new-game').addEventListener('click', () => {
+  socket.emit('new-game', {}, (reply) => {
+    if (!reply.ok) showToast(reply.error);
+  });
+});
+
 $('#apply-starting-stack').addEventListener('click', () => {
   const startingStack = Number($('#lobby-starting-stack').value);
   socket.emit('set-starting-stack', { startingStack }, (reply) => {
@@ -878,7 +886,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=11'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=12'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

@@ -105,6 +105,15 @@ function postBlind(game, index, amount) {
   commitChips(game, game.players[index], amount);
 }
 
+export function startNewGame(game, random = Math.random) {
+  if (game.phase !== 'waiting') throw new Error('Finish the current round before starting a new game');
+  if (activeSeatIndexes(game).length < 2) throw new Error('At least two connected players with chips are required');
+  game.handNumber = 0;
+  game.dealerIndex = -1;
+  game.result = null;
+  return startHand(game, random);
+}
+
 export function startHand(game, random = Math.random) {
   if (game.phase !== 'waiting') throw new Error('A hand is already running');
   const seats = activeSeatIndexes(game);

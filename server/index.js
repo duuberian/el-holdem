@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { Server } from 'socket.io';
-import { ACTIONS, act, exchangePlayerChip, publicState, setStartingStack, startHand } from './game.js';
+import { ACTIONS, act, exchangePlayerChip, publicState, setStartingStack, startHand, startNewGame } from './game.js';
 import { createRoomStore } from './rooms.js';
 import {
   cacheControlForPath,
@@ -148,6 +148,21 @@ io.on('connection', (socket) => {
       try {
         if (!player.isHost) throw new Error('Only the host can deal');
         startHand(room.game);
+        emitRoom(room);
+        ack({ ok: true });
+      } catch (error) {
+        ack({ ok: false, error: errorMessage(error) });
+      }
+    }, ack);
+  });
+
+  socket.on('new-game', (_payload, ack = () => {}) => {
+    ack = safeAck(ack);
+    if (!allowEvent(socket, ack)) return;
+    withMembership(socket, ({ room, player }) => {
+      try {
+        if (!player.isHost) throw new Error('Only the host can start a new game');
+        startNewGame(room.game);
         emitRoom(room);
         ack({ ok: true });
       } catch (error) {

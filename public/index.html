@@ -7,7 +7,7 @@
   <meta name="description" content="Private, live Texas Hold'em for family and friends.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=11">
+  <link rel="stylesheet" href="/style.css?v=12">
   <title>EL Holdem</title>
 </head>
 <body>
@@ -42,9 +42,9 @@
 
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
-        <span id="app-version" class="version-badge">v1.1</span>
+        <span id="app-version" class="version-badge">v1.2</span>
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
-        <button id="chip-bank-button" class="chip-bank-button" aria-label="Open chip bank"><span class="mini-chip">20</span></button>
+
         <button id="sound-toggle" class="sound-toggle" aria-label="Mute game sounds" aria-pressed="false">SFX</button>
         <button id="share" class="room-pill" aria-label="Copy room invite"><span id="room-code"></span><span class="copy-icon">⌁</span></button>
         <div id="connection" class="connection"><i></i><span>Live</span></div>
@@ -87,6 +87,7 @@
           <div><input id="lobby-starting-stack" type="number" min="100" max="100000" step="100" inputmode="numeric"><button id="apply-starting-stack" aria-label="Apply starting chips">SET</button></div>
         </div>
         <button id="deal" class="button primary hidden">Deal the cards</button>
+        <button id="new-game" class="button secondary hidden">New game · keep chips</button>
         <p id="host-note" class="host-note">Waiting for the host to deal…</p>
       </aside>
 
@@ -121,12 +122,13 @@
 
       <footer id="controls" class="controls hidden">
         <button id="react-button" class="round-button" aria-label="Open reactions">☺</button>
+        <button id="chip-bank-button" class="chip-bank-button" aria-label="Open chip bank"><span class="mini-chip">20</span></button>
         <div id="action-buttons" class="action-buttons"></div>
       </footer>
       <div id="toast" class="toast hidden" role="status"></div>
     </section>
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/client.js?v=11"></script>
+  <script type="module" src="/client.js?v=12"></script>
 </body>
 </html>

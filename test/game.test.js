@@ -8,6 +8,7 @@ import {
   publicState,
   setStartingStack,
   startHand,
+  startNewGame,
   act,
 } from '../server/game.js';
 import { chipRackValue } from '../server/chips.js';
@@ -44,6 +45,35 @@ describe('server-authoritative deck', () => {
     const visible = game.players.flatMap((player) => player.hand);
     assert.equal(visible.length, 16);
     assert.equal(new Set([...visible, ...game.deck]).size, 52);
+  });
+});
+
+describe('bankroll-preserving game restart', () => {
+  it('starts a fresh game at hand one without resetting winnings', () => {
+    const game = gameWithPlayers(2);
+    startHand(game, () => 0.27);
+    act(game, game.currentActor, { type: ACTIONS.FOLD });
+    const wonStacks = game.players.map((player) => player.stack);
+
+    startNewGame(game, () => 0.41);
+
+    assert.equal(game.handNumber, 1);
+    assert.equal(game.dealerIndex, 0);
+    assert.deepEqual(game.players.map((player) => player.stack), [wonStacks[0] - 10, wonStacks[1] - 20]);
+    assertChipBacked(game);
+  });
+
+  it('does not reset game metadata when a new game cannot start', () => {
+    const game = gameWithPlayers(2);
+    game.handNumber = 7;
+    game.dealerIndex = 1;
+    game.result = { text: 'Previous winner' };
+    game.players[1].connected = false;
+
+    assert.throws(() => startNewGame(game, () => 0.4), /At least two/);
+    assert.equal(game.handNumber, 7);
+    assert.equal(game.dealerIndex, 1);
+    assert.deepEqual(game.result, { text: 'Previous winner' });
   });
 });
 
