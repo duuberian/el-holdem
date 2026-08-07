@@ -578,10 +578,15 @@ function renderStagedSelection() {
 
 function playerElement(player, self, position) {
   const node = document.createElement('div');
-  node.className = `player${self ? ' self' : ''}${player.folded ? ' folded' : ''}${player.connected ? '' : ' disconnected'}${snapshot.state.currentActor === player.id ? ' turn' : ''}`;
+  node.className = `player${self ? ' self' : ''}${position.orientation ? ` side-player side-${position.orientation}` : ''}${player.folded ? ' folded' : ''}${player.connected ? '' : ' disconnected'}${snapshot.state.currentActor === player.id ? ' turn' : ''}`;
   node.dataset.playerId = player.id;
   node.style.setProperty('--x', `${position.x}%`);
   node.style.setProperty('--y', `${position.y}%`);
+  node.style.transform = position.orientation === 'left'
+    ? 'translate(-50%, -50%) rotate(90deg)'
+    : position.orientation === 'right'
+      ? 'translate(-50%, -50%) rotate(-90deg)'
+      : 'translate(-50%, -50%)';
 
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
@@ -641,7 +646,8 @@ function renderPlayers() {
     const angle = opponents.length === 1 ? 1.5 * Math.PI : Math.PI + (Math.PI * index) / (opponents.length - 1);
     const x = 50 + 35 * Math.cos(angle);
     const y = 53 + 34 * Math.sin(angle);
-    container.append(playerElement(player, false, { x, y }));
+    const orientation = x < 30 ? 'left' : x > 70 ? 'right' : null;
+    container.append(playerElement(player, false, { x, y, orientation }));
   });
   if (self) container.append(playerElement(self, true, { x: 50, y: 92 }));
 }
@@ -1014,7 +1020,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=15'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=16'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

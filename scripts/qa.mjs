@@ -60,9 +60,13 @@ await solo.locator('#action-buttons button').filter({ hasText: /Check|Call/ }).f
 if ((await solo.locator('#action-buttons').textContent()).includes('another player')) throw new Error('Solo mode misleadingly asks for another player after Test Bots joined');
 const soloSeats = await solo.locator('.player').evaluateAll((players) => players.map((player) => {
   const rect = player.getBoundingClientRect();
-  return { name: player.querySelector('.player-name')?.textContent.trim(), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight };
+  return { name: player.querySelector('.player-name')?.textContent.trim(), classes: player.className, transform: player.style.transform, left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight };
 }));
+const leftSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 1'));
+const topSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 2'));
+const rightSoloSeat = soloSeats.find(({ name }) => name?.includes('Test Bot 3'));
 if (soloSeats.length !== 4 || soloSeats.some(({ left, right, viewportWidth }) => left < 0 || right > viewportWidth)) throw new Error(`Four-player Solo seats are clipped outside the mobile viewport: ${JSON.stringify(soloSeats)}`);
+if (!leftSoloSeat?.classes.includes('side-left') || !leftSoloSeat.transform.includes('rotate(90deg)') || !rightSoloSeat?.classes.includes('side-right') || !rightSoloSeat.transform.includes('rotate(-90deg)') || topSoloSeat?.classes.includes('side-player')) throw new Error(`Left/right seats are not vertically oriented while the top seat stays horizontal: ${JSON.stringify(soloSeats)}`);
 await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
@@ -74,7 +78,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.5' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.6' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
