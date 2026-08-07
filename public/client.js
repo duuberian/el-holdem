@@ -941,7 +941,6 @@ function setRevealDrag(progress) {
   gameScreen.style.setProperty('--reveal-offset', `${clamped * 42}px`);
   gameScreen.style.setProperty('--reveal-tilt', `${clamped * -2}deg`);
   revealCards.style.setProperty('--reveal-drag', String(clamped));
-  revealCards.style.setProperty('--reveal-button-offset', `${clamped * 42}px`);
   if (revealPointerId !== null) setCardsRevealed(clamped >= 0.16);
 }
 

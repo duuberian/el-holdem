@@ -140,7 +140,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.9' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.10' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
@@ -229,6 +229,13 @@ for (const page of [host, guest]) {
     clipPath: getComputedStyle(button).clipPath,
   }));
   if (!revealMount.onPlayer || Math.abs(revealMount.width - revealMount.height) > 1 || revealMount.clipPath === 'none') throw new Error(`Reveal control is not a pixel-round player control: ${JSON.stringify(revealMount)}`);
+  const stationaryBefore = await page.evaluate(() => Object.fromEntries([
+    ['brand', document.querySelector('.mini-brand')],
+    ['name', document.querySelector('.player.self .player-name')],
+    ['stack', document.querySelector('.player.self .player-stack')],
+    ['phase', document.querySelector('#phase')],
+    ['pull', document.querySelector('#reveal-cards')],
+  ].map(([key, node]) => [key, node.getBoundingClientRect().toJSON()])));
   const cardBefore = await page.locator('.player.self .hole-cards .card').first().boundingBox();
   const revealBox = await reveal.boundingBox();
   await reveal.dispatchEvent('pointerdown', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 10 });
@@ -238,6 +245,13 @@ for (const page of [host, guest]) {
   if (dragProgress <= 0 || await page.locator('.player.self .card:not(.back)').count() !== 2) throw new Error('Dragging reveal down did not fluidly show both private cards');
   const cardAfter = await page.locator('.player.self .hole-cards .card').first().boundingBox();
   const revealAfter = await reveal.boundingBox();
+  const stationaryAfter = await page.evaluate(() => Object.fromEntries([
+    ['brand', document.querySelector('.mini-brand')],
+    ['name', document.querySelector('.player.self .player-name')],
+    ['stack', document.querySelector('.player.self .player-stack')],
+    ['phase', document.querySelector('#phase')],
+    ['pull', document.querySelector('#reveal-cards')],
+  ].map(([key, node]) => [key, node.getBoundingClientRect().toJSON()])));
   const revealOverlap = await page.locator('.player.self').evaluate((player) => {
     const button = player.querySelector('.reveal-cards').getBoundingClientRect();
     return [...player.querySelectorAll('.hole-cards .card')].reduce((area, card) => {
@@ -258,7 +272,8 @@ for (const page of [host, guest]) {
   });
   const cardTravel = cardAfter.y - cardBefore.y;
   const buttonTravel = revealAfter.y - revealBox.y;
-  if (cardTravel < 25 || buttonTravel < 25 || Math.abs(cardTravel - buttonTravel) > 4 || cardAfter.y < 0 || cardAfter.y + cardAfter.height > 664 || revealOverlap > 0.25) throw new Error(`Cards did not follow the pull control fully in view: ${JSON.stringify({ cardBefore, cardAfter, revealBox, revealAfter, revealOverlap })}`);
+  const movedStationaryUi = Object.keys(stationaryBefore).filter((key) => Math.abs(stationaryAfter[key].x - stationaryBefore[key].x) > 1 || Math.abs(stationaryAfter[key].y - stationaryBefore[key].y) > 1);
+  if (cardTravel < 25 || Math.abs(buttonTravel) > 1 || movedStationaryUi.length || cardAfter.y < 0 || cardAfter.y + cardAfter.height > 664 || revealOverlap > 0.25) throw new Error(`Reveal must move only the private cards: ${JSON.stringify({ cardBefore, cardAfter, revealBox, revealAfter, revealOverlap, movedStationaryUi, stationaryBefore, stationaryAfter })}`);
   if (coveredLabels.some((target) => target.area > 1 || target.opacity < 0.9)) throw new Error(`Revealed cards cover or hide table labels: ${JSON.stringify(coveredLabels)}`);
   if (page === host) await page.screenshot({ path: new URL('cards-reveal-mobile.png', out).pathname, fullPage: true });
   await reveal.dispatchEvent('pointerup', { pointerId: 1, pointerType: 'touch', isPrimary: true, clientY: revealBox.y + 44 });
