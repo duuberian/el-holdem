@@ -525,7 +525,7 @@ function renderRaiseChips() {
     button.type = 'button';
     button.setAttribute('aria-label', `Add ${denomination} chip`);
     button.disabled = denomination > remainingValue || stagedTotal() + denomination > self.stack;
-    button.append(pokerChip(denomination, count, true));
+    button.append(chipPile(denomination, count));
     button.addEventListener('click', () => addStagedChip(denomination));
     rack.append(button);
   }
@@ -654,6 +654,7 @@ function openRaisePanel(invoker = document.activeElement) {
   const min = Math.min(self.bet + self.stack, snapshot.state.currentBet + snapshot.state.minRaise);
   const max = self.bet + self.stack;
   raiseBounds = { min, max, currentBet: snapshot.state.currentBet };
+  $('#raise-player-name').textContent = `${self.name.toUpperCase()} · BUILD YOUR BET`;
   resetStagedChips();
   raiseInvoker = invoker;
   gameScreen.classList.add('raise-mode');
@@ -948,7 +949,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=13'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=14'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

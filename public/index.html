@@ -7,7 +7,7 @@
   <meta name="description" content="Private, live Texas Hold'em for family and friends.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=13">
+  <link rel="stylesheet" href="/style.css?v=14">
   <title>EL Holdem</title>
 </head>
 <body>
@@ -43,7 +43,7 @@
 
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
-        <span id="app-version" class="version-badge">v1.3</span>
+        <span id="app-version" class="version-badge">v1.4</span>
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
 
         <button id="sound-toggle" class="sound-toggle" aria-label="Mute game sounds" aria-pressed="false">SFX</button>
@@ -109,7 +109,7 @@
 
       <section id="raise-panel" class="raise-panel hidden" role="dialog" aria-modal="true" aria-label="Arrange raise chips" aria-describedby="raise-help">
         <div class="raise-heading">
-          <div><span>BUILD YOUR BET</span><strong>CHOOSE CHIPS</strong></div>
+          <div><span id="raise-player-name">PLAYER · BUILD YOUR BET</span><strong>CHOOSE CHIPS</strong></div>
           <button id="raise-cancel" aria-label="Cancel raise">×</button>
         </div>
         <p id="raise-help" class="raise-help">Tap a chip to add one. Tap a pile on the table to take one back.</p>
@@ -130,6 +130,6 @@
     </section>
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/client.js?v=13"></script>
+  <script type="module" src="/client.js?v=14"></script>
 </body>
 </html>

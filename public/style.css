@@ -131,3 +131,12 @@ label{display:block;color:#d7cdea;margin:0 0 6px 2px;font-size:11px}input{width:
 .controls>.chip-bank-button{flex:0 0 48px;width:48px;height:48px;min-width:48px;min-height:48px;border:3px solid #604584;background:#2a1d49}.controls>.chip-bank-button .mini-chip{width:34px;height:34px}
 .player.self:has(.reveal-cards.revealing) .player-name,.player.self:has(.reveal-cards.revealing) .player-stack{opacity:1!important;transform:translateY(28px);transition:transform 70ms linear}
 .game:has(.reveal-cards.revealing) .phase{left:18%!important;z-index:32;transition:left 70ms linear}
+
+/* v1.4: bank-sized Raise controls and persistent player identity. */
+.player-name{opacity:1!important;visibility:visible!important;position:relative;z-index:41}
+.raise-heading>button{position:relative;z-index:2;width:48px!important;height:48px!important;min-width:48px;min-height:48px;padding:0;touch-action:manipulation;pointer-events:auto}
+.raise-chips{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px 6px!important;align-items:end}
+.raise-chips>button{display:grid;place-items:end center;min-width:0;min-height:45px;padding:2px!important;overflow:visible}
+.raise-chips .chip-pile{margin:auto}
+.raise-mode .staged-bet{bottom:32%}
+@media(max-height:650px){.raise-chips{gap:1px 4px!important}.raise-chips>button{min-height:41px}.raise-help{margin:3px 0 4px}.raise-mode .staged-bet{bottom:30%}}
