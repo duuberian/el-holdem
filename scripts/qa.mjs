@@ -17,9 +17,45 @@ function watch(page, label) {
 const mobile = devices['iPhone 13'];
 const hostContext = await browser.newContext({ ...mobile });
 const guestContext = await browser.newContext({ ...mobile });
+const soloContext = await browser.newContext({ ...mobile });
 const host = await hostContext.newPage();
 const guest = await guestContext.newPage();
-watch(host, 'host'); watch(guest, 'guest');
+const solo = await soloContext.newPage();
+watch(host, 'host'); watch(guest, 'guest'); watch(solo, 'solo');
+
+await solo.goto(base, { waitUntil: 'networkidle' });
+await solo.getByLabel('Your name').fill('Solo Daniel');
+await solo.getByRole('button', { name: 'Solo test table' }).click();
+await solo.locator('#game:not(.hidden)').waitFor();
+await solo.getByText('Test Bot', { exact: false }).first().waitFor();
+await solo.getByRole('button', { name: 'Deal the cards' }).click();
+await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
+if (await solo.locator('.player').count() !== 2) throw new Error('Solo test table did not create exactly one automated opponent');
+for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
+  const check = solo.locator('#action-buttons button:has-text("Check")').first();
+  const call = solo.locator('#action-buttons button:has-text("Call")').first();
+  if (await check.isVisible().catch(() => false)) await check.click();
+  else if (await call.isVisible().catch(() => false)) await call.click();
+  await solo.waitForTimeout(850);
+}
+if ((await solo.locator('#phase').textContent()).trim() !== 'FLOP') throw new Error('Solo Test Bot did not automatically complete preflop play');
+await solo.getByRole('button', { name: 'Check' }).waitFor({ timeout: 2500 });
+await solo.reload({ waitUntil: 'networkidle' });
+await solo.locator('#game:not(.hidden)').waitFor({ timeout: 5000 });
+await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).waitFor({ timeout: 5000 });
+await solo.getByRole('button', { name: 'New round' }).click();
+await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
+for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
+  const check = solo.locator('#action-buttons button:has-text("Check")').first();
+  const call = solo.locator('#action-buttons button:has-text("Call")').first();
+  if (await check.isVisible().catch(() => false)) await check.click();
+  else if (await call.isVisible().catch(() => false)) await call.click();
+  await solo.waitForTimeout(850);
+}
+await solo.locator('#phase').filter({ hasText: 'FLOP' }).waitFor({ timeout: 3000 });
+await solo.getByRole('button', { name: 'Check' }).waitFor({ timeout: 2500 });
+if ((await solo.locator('#action-buttons').textContent()).includes('another player')) throw new Error('Solo mode misleadingly asks for another player after Test Bot joined');
+await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
 await host.screenshot({ path: new URL('landing-mobile.png', out).pathname, fullPage: true });
@@ -30,7 +66,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.2' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.3' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
@@ -62,7 +98,7 @@ await host.getByRole('button', { name: 'Open chip bank' }).click();
 await host.locator('#chip-bank:not(.hidden)').waitFor();
 const chipBankValueBefore = await host.locator('#chip-bank-total').textContent();
 await host.getByRole('button', { name: 'Break one 500 chip into smaller chips' }).click();
-await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '500 ×4' }).waitFor();
+await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '×4' }).waitFor();
 if (await host.locator('#chip-bank-total').textContent() !== chipBankValueBefore) throw new Error('In-hand chip exchange changed bankroll value');
 await host.screenshot({ path: new URL('chip-bank-mobile.png', out).pathname, fullPage: true });
 await host.getByRole('button', { name: 'Close chip bank' }).click();
@@ -75,8 +111,18 @@ for (const page of [host, guest]) {
   if (await rack.locator('.bankroll-piles .chip-pile').count() < 1) throw new Error('Persistent personal chip piles are missing');
   const pileBox = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => pile.getBoundingClientRect().toJSON());
   if (pileBox.width > 110 || pileBox.height > 48) throw new Error(`Personal chip piles are not compact: ${JSON.stringify(pileBox)}`);
-  const pileLabel = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => ({ topValueDisplay: getComputedStyle(pile.querySelector('.pile-top .chip-value')).display, count: pile.querySelector('.pile-count').textContent.trim() }));
-  if (pileLabel.topValueDisplay !== 'none' || !/^\d[\d,]* ×\d+$/.test(pileLabel.count)) throw new Error(`Chip denomination was not moved off the ugly top cap: ${JSON.stringify(pileLabel)}`);
+  const pileLabel = await rack.locator('.bankroll-piles .chip-pile').first().evaluate((pile) => {
+    const cap = pile.querySelector('.pile-top');
+    return {
+      denomination: pile.dataset.denomination,
+      topValue: cap.querySelector('.chip-value').textContent.trim(),
+      topValueDisplay: getComputedStyle(cap.querySelector('.chip-value')).display,
+      count: pile.querySelector('.pile-count').textContent.trim(),
+      capHeight: cap.getBoundingClientRect().height,
+      centerDisplay: getComputedStyle(cap, '::after').display,
+    };
+  });
+  if (pileLabel.topValueDisplay === 'none' || pileLabel.topValue !== pileLabel.denomination || !/^×\d+$/.test(pileLabel.count) || pileLabel.capHeight < 11 || pileLabel.centerDisplay === 'none') throw new Error(`Chip cap is not a clean color-matched numbered face: ${JSON.stringify(pileLabel)}`);
   const rackAndToast = await page.evaluate(() => {
     const rackRect = document.querySelector('#self-bankroll').getBoundingClientRect();
     const toastRect = document.querySelector('#toast:not(.hidden)')?.getBoundingClientRect();
@@ -163,7 +209,7 @@ const splitPileLayout = await splitPile.evaluate((pile) => {
   const rect = pile.getBoundingClientRect();
   return { stacks: pile.querySelectorAll('.pile-stack').length, badgeText: pile.querySelector('.pile-count').textContent, badgeLeft: badge.left, badgeRight: badge.right, pileLeft: rect.left, pileRight: rect.right };
 });
-if (splitPileLayout.stacks !== 4 || splitPileLayout.badgeText !== '100 ×29' || splitPileLayout.badgeLeft < splitPileLayout.pileLeft - 1 || splitPileLayout.badgeRight > splitPileLayout.pileRight + 1) throw new Error(`Tall chip count did not split into readable adjacent piles: ${JSON.stringify(splitPileLayout)}`);
+if (splitPileLayout.stacks !== 4 || splitPileLayout.badgeText !== '×29' || splitPileLayout.badgeLeft < splitPileLayout.pileLeft - 1 || splitPileLayout.badgeRight > splitPileLayout.pileRight + 1) throw new Error(`Tall chip count did not split into readable adjacent piles: ${JSON.stringify(splitPileLayout)}`);
 const beforeCombineTotal = await guest.locator('#chip-bank-total').textContent();
 await guest.locator('[data-chip-combine="500"]').click();
 await guest.locator('#self-bankroll .chip-pile[data-denomination="100"] .pile-count', { hasText: '×24' }).waitFor();

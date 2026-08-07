@@ -28,6 +28,8 @@ let lastResultKey = '';
 let soundEnabled = localStorage.getItem('el-holdem:sound') !== 'muted';
 let audioContext = null;
 let toastTimer;
+let soloBotSocket = null;
+let soloBotTimer = null;
 
 let audioFailed = false;
 
@@ -136,6 +138,7 @@ function showToast(message, timeout = 2200) {
 
 function setBusy(busy) {
   $('#party-button').disabled = busy;
+  $('#solo-test').disabled = busy;
 }
 
 function saveSession(code, token, name) {
@@ -167,6 +170,44 @@ function submitJoin(code, name, automatic = false) {
     }
     saveSession(reply.code, reply.token, name);
     enterGame();
+    if (automatic && localStorage.getItem(`el-holdem:solo-bot:${reply.code}`)) startSoloBot(reply.code);
+  });
+}
+
+function startSoloBot(code) {
+  if (soloBotSocket) soloBotSocket.disconnect();
+  const tokenKey = `el-holdem:solo-bot:${code}`;
+  soloBotSocket = window.io({ forceNew: true });
+  let botActionPending = false;
+  let lastBotState = null;
+
+  const queueBotAction = (data) => {
+    lastBotState = data;
+    if (data.state.phase === 'waiting' || data.state.currentActor !== data.selfId || botActionPending) return;
+    const actions = data.state.legalActions ?? [];
+    const type = actions.includes('check') ? 'check' : actions.includes('call') ? 'call' : actions.includes('fold') ? 'fold' : null;
+    if (!type) return;
+    botActionPending = true;
+    clearTimeout(soloBotTimer);
+    soloBotTimer = setTimeout(() => {
+      soloBotSocket.emit('action', { type }, () => {
+        botActionPending = false;
+        if (lastBotState) queueBotAction(lastBotState);
+      });
+    }, 550);
+  };
+
+  soloBotSocket.on('state', queueBotAction);
+  soloBotSocket.on('disconnect', () => {
+    clearTimeout(soloBotTimer);
+    botActionPending = false;
+  });
+  soloBotSocket.on('connect', () => {
+    const token = localStorage.getItem(tokenKey);
+    soloBotSocket.emit('join-room', { code, name: 'Test Bot', token }, (reply) => {
+      if (!reply.ok) showToast(reply.error);
+      else localStorage.setItem(tokenKey, reply.token);
+    });
   });
 }
 
@@ -183,6 +224,27 @@ function setPartyMode(mode) {
 
 $('#mode-join').addEventListener('click', () => setPartyMode('join'));
 $('#mode-host').addEventListener('click', () => setPartyMode('host'));
+
+$('#solo-test').addEventListener('click', () => {
+  const name = nameInput.value.trim();
+  errorBox.textContent = '';
+  if (!name) {
+    errorBox.textContent = 'Enter your name first.';
+    nameInput.focus();
+    return;
+  }
+  setBusy(true);
+  socket.emit('create-room', { name, startingStack: Number($('#starting-stack').value) }, (reply) => {
+    setBusy(false);
+    if (!reply.ok) {
+      errorBox.textContent = reply.error;
+      return;
+    }
+    saveSession(reply.code, reply.token, name);
+    enterGame();
+    startSoloBot(reply.code);
+  });
+});
 
 form.addEventListener('submit', (event) => {
   event.preventDefault();
@@ -294,7 +356,7 @@ function chipPile(denomination, count, interactive = false) {
   const visibleStacks = Math.min(4, Math.max(1, Math.ceil(count / chipsPerStack)));
   if (count === 0) pile.classList.add('empty-pile');
   pile.style.setProperty('--stack-count', visibleStacks);
-  pile.style.setProperty('--pile-width', `${Math.max(36, visibleStacks * 26 - 2)}px`);
+  pile.style.setProperty('--pile-width', `${visibleStacks * 26 - 2}px`);
   pile.setAttribute('aria-label', `${count} chip${count === 1 ? '' : 's'} worth ${denomination.toLocaleString()} each`);
 
   let remaining = count;
@@ -316,7 +378,7 @@ function chipPile(denomination, count, interactive = false) {
 
   const tally = document.createElement('span');
   tally.className = 'pile-count';
-  tally.textContent = `${denomination.toLocaleString()} ×${count}`;
+  tally.textContent = `×${count}`;
   pile.append(tally);
   return pile;
 }
@@ -648,7 +710,7 @@ function renderControls() {
     const waiting = document.createElement('button');
     waiting.className = 'action-button';
     waiting.disabled = true;
-    waiting.textContent = snapshot.state.currentActor ? 'Waiting for another player…' : 'Dealing…';
+    waiting.textContent = snapshot.state.currentActor ? 'Waiting for your turn…' : 'Dealing…';
     bar.append(waiting);
     return;
   }
@@ -886,7 +948,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=12'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=13'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

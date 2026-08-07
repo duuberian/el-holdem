@@ -58,6 +58,7 @@ export function createRoomStore(codeGenerator = defaultCode, { maxRooms = 500 } 
       const room = { code, game: createGame({ startingStack }), createdAt: Date.now() };
       rooms.set(code, room);
       const player = addPlayer(room, { name, socketId });
+      room.creatorId = player.id;
       return { room, player };
     },
 
@@ -70,6 +71,9 @@ export function createRoomStore(codeGenerator = defaultCode, { maxRooms = 500 } 
         if (player.socketId) sockets.delete(player.socketId);
         player.socketId = socketId;
         player.connected = true;
+        if (player.id === room.creatorId) {
+          for (const candidate of room.game.players) candidate.isHost = candidate.id === player.id;
+        }
         sockets.set(socketId, { roomCode: room.code, playerId: player.id });
       } else player = addPlayer(room, { name, socketId });
       return { room, player };

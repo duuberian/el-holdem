@@ -30,6 +30,18 @@ describe('room store', () => {
     assert.equal(second.player.connected, true);
   });
 
+  it('returns host control to the room creator when they reconnect', () => {
+    const rooms = createRoomStore(() => 'ABC123');
+    const creator = rooms.create({ name: 'Daniel', socketId: 's1' });
+    const replacement = rooms.join({ code: 'ABC123', name: 'Test Bot', socketId: 's2' });
+    rooms.disconnect('s1');
+    assert.equal(replacement.player.isHost, true);
+
+    const rejoined = rooms.join({ code: 'ABC123', name: 'Ignored', socketId: 's3', token: creator.player.token });
+    assert.equal(rejoined.player.isHost, true);
+    assert.equal(replacement.player.isHost, false);
+  });
+
   it('rejects a duplicate display name in one room', () => {
     const store = createRoomStore(() => 'ABC123');
     const { room } = store.create({ name: 'Daniel', socketId: 'socket-a' });
