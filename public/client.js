@@ -147,6 +147,7 @@ function setBusy(busy) {
 function saveSession(code, token, name) {
   activeCode = code;
   localStorage.setItem('el-holdem:name', name);
+  localStorage.setItem('el-holdem:last-room', code);
   localStorage.setItem(`el-holdem:token:${code}`, token);
   history.replaceState(null, '', `/?room=${code}`);
 }
@@ -583,6 +584,7 @@ function playerElement(player, self, position) {
   const node = document.createElement('div');
   node.className = `player${self ? ' self' : ''}${position.orientation ? ` side-player side-${position.orientation}` : ''}${player.folded ? ' folded' : ''}${player.connected ? '' : ' disconnected'}${snapshot.state.currentActor === player.id ? ' turn' : ''}`;
   node.dataset.playerId = player.id;
+  node.dataset.seat = String(player.seat);
   node.style.setProperty('--x', `${position.x}%`);
   node.style.setProperty('--y', `${position.y}%`);
   node.style.transform = position.orientation === 'left'
@@ -604,8 +606,14 @@ function playerElement(player, self, position) {
   if (player.isDealer) {
     const dealer = document.createElement('i');
     dealer.className = 'dealer';
-    dealer.textContent = 'D';
+    dealer.textContent = 'DEALER';
     avatar.append(dealer);
+  }
+  if (snapshot.state.currentActor === player.id) {
+    const acting = document.createElement('b');
+    acting.className = 'acting-marker';
+    acting.textContent = 'ACTING';
+    avatar.append(acting);
   }
 
   const cards = document.createElement('div');
@@ -644,10 +652,14 @@ function playerElement(player, self, position) {
 function renderPlayers() {
   const container = $('#players');
   container.replaceChildren();
-  const self = snapshot.state.players.find((player) => player.id === snapshot.selfId);
-  const opponents = snapshot.state.players.filter((player) => player.id !== snapshot.selfId);
+  const selfIndex = snapshot.state.players.findIndex((player) => player.id === snapshot.selfId);
+  const self = snapshot.state.players[selfIndex];
+  const opponents = selfIndex < 0 ? snapshot.state.players : Array.from(
+    { length: snapshot.state.players.length - 1 },
+    (_, offset) => snapshot.state.players[(selfIndex + offset + 1) % snapshot.state.players.length],
+  );
   opponents.forEach((player, index) => {
-    const angle = opponents.length === 1 ? 1.5 * Math.PI : Math.PI + (Math.PI * index) / (opponents.length - 1);
+    const angle = opponents.length === 1 ? 1.5 * Math.PI : 2 * Math.PI - (Math.PI * index) / (opponents.length - 1);
     const x = 50 + 35 * Math.cos(angle);
     const y = 53 + 34 * Math.sin(angle);
     const orientation = x < 30 ? 'left' : x > 70 ? 'right' : null;
@@ -665,7 +677,7 @@ function actionButton(label, type, className = '') {
 }
 
 function setActionBusy(busy) {
-  document.querySelectorAll('#action-buttons button, #raise-panel button').forEach((button) => {
+  document.querySelectorAll('#action-buttons button, #raise-panel button:not(#raise-cancel)').forEach((button) => {
     button.disabled = busy;
   });
 }
@@ -722,6 +734,10 @@ function closeRaisePanel() {
 }
 
 $('#raise-cancel').addEventListener('click', closeRaisePanel);
+$('#raise-cancel').addEventListener('pointerup', (event) => {
+  event.preventDefault();
+  closeRaisePanel();
+});
 $('#staged-fold').addEventListener('click', () => sendAction('fold'));
 $('#staged-check').addEventListener('click', () => sendAction('check'));
 $('#raise-confirm').addEventListener('click', () => {
@@ -733,7 +749,9 @@ $('#raise-confirm').addEventListener('click', () => {
   if (valid) sendAction('raise', target);
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && raiseBounds) closeRaisePanel();
+  if (event.key !== 'Escape') return;
+  if (raiseBounds) closeRaisePanel();
+  $('#chip-bank').classList.add('hidden');
 });
 
 function renderControls() {
@@ -809,31 +827,49 @@ function renderResult() {
   result.replaceChildren();
   if (!roundResult) return;
 
+  const stage = document.createElement('div');
+  stage.className = 'result-stage';
+  stage.textContent = `${(roundResult.street ?? 'hand').toUpperCase()} · HAND COMPLETE`;
+  result.append(stage);
+
+  if (roundResult.type === 'showdown') {
+    const shownPlayers = [...(roundResult.showdownPlayers ?? roundResult.winners ?? [])]
+      .sort((a, b) => Number(b.amount > 0) - Number(a.amount > 0));
+    for (const shown of shownPlayers) {
+      if (!Array.isArray(shown.cards) || !shown.cards.length) continue;
+      const player = snapshot.state.players.find((candidate) => candidate.id === shown.id);
+      const summary = document.createElement('section');
+      summary.className = `winner-summary${shown.amount > 0 ? ' won' : ''}`;
+      const identity = document.createElement('strong');
+      identity.className = 'winner-name';
+      identity.textContent = `${player?.name ?? 'Player'}${shown.amount > 0 ? ` · WON ${Number(shown.amount).toLocaleString()}` : ''}`;
+      const cards = document.createElement('div');
+      cards.className = 'winner-cards';
+      cards.setAttribute('aria-label', `${player?.name ?? 'Player'} original hole cards`);
+      cards.append(...shown.cards.map((card) => cardElement(card)));
+      const hand = document.createElement('span');
+      hand.className = 'winner-hand';
+      hand.textContent = `MADE ${shown.handName ?? 'A WINNING HAND'}`;
+      summary.append(identity, cards, hand);
+      result.append(summary);
+    }
+    if (Array.isArray(roundResult.community) && roundResult.community.length) {
+      const finalBoard = document.createElement('section');
+      finalBoard.className = 'result-board';
+      const label = document.createElement('strong');
+      label.textContent = 'FINAL BOARD';
+      const cards = document.createElement('div');
+      cards.className = 'result-board-cards';
+      cards.append(...roundResult.community.map((card) => cardElement(card)));
+      finalBoard.append(label, cards);
+      result.append(finalBoard);
+    }
+  }
+
   const headline = document.createElement('div');
   headline.className = 'result-text';
   headline.textContent = roundResult.text ?? '';
   result.append(headline);
-  if (roundResult.type !== 'showdown') return;
-
-  const shownPlayers = roundResult.showdownPlayers ?? roundResult.winners ?? [];
-  for (const shown of shownPlayers) {
-    if (!Array.isArray(shown.cards) || !shown.cards.length) continue;
-    const player = snapshot.state.players.find((candidate) => candidate.id === shown.id);
-    const summary = document.createElement('section');
-    summary.className = `winner-summary${shown.amount > 0 ? ' won' : ''}`;
-    const identity = document.createElement('strong');
-    identity.className = 'winner-name';
-    identity.textContent = `${player?.name ?? 'Player'}${shown.amount > 0 ? ` · WON ${Number(shown.amount).toLocaleString()}` : ''}`;
-    const cards = document.createElement('div');
-    cards.className = 'winner-cards';
-    cards.setAttribute('aria-label', `${player?.name ?? 'Player'} showdown cards`);
-    cards.append(...shown.cards.map((card) => cardElement(card)));
-    const hand = document.createElement('span');
-    hand.className = 'winner-hand';
-    hand.textContent = shown.handName ?? '';
-    summary.append(identity, cards, hand);
-    result.append(summary);
-  }
 }
 
 function render() {
@@ -843,7 +879,10 @@ function render() {
   $('#pot strong').textContent = tablePot.toLocaleString();
   const potChips = $('#pot-chips');
   potChips.replaceChildren(...chipBreakdown(tablePot).map(({ denomination, count }) => chipPile(denomination, count)));
-  $('#phase').textContent = snapshot.state.phase === 'waiting' ? 'TABLE OPEN' : snapshot.state.phase.toUpperCase();
+  const visibleStreet = snapshot.state.result?.street ?? snapshot.state.phase;
+  $('#phase').textContent = snapshot.state.phase === 'waiting' && !snapshot.state.result
+    ? 'TABLE OPEN'
+    : `${visibleStreet.toUpperCase()}${snapshot.state.phase === 'waiting' ? ' · HAND COMPLETE' : ''}`;
   const board = $('#board');
   board.replaceChildren(...snapshot.state.community.map((card) => cardElement(card)));
   renderBankroll();
@@ -989,7 +1028,20 @@ $('#chip-bank-button').addEventListener('click', () => {
   reactionTray.classList.add('hidden');
   $('#chip-bank').classList.toggle('hidden');
 });
-$('#chip-bank-close').addEventListener('click', () => $('#chip-bank').classList.add('hidden'));
+function closeChipBank() {
+  $('#chip-bank').classList.add('hidden');
+}
+const chipBankClose = $('#chip-bank-close');
+chipBankClose.addEventListener('click', closeChipBank);
+chipBankClose.addEventListener('pointerup', (event) => {
+  event.preventDefault();
+  closeChipBank();
+});
+document.addEventListener('pointerdown', (event) => {
+  const bank = $('#chip-bank');
+  if (!bank.classList.contains('hidden') && !event.target.closest('#chip-bank, #chip-bank-button')) closeChipBank();
+  if (raiseBounds && !event.target.closest('#raise-panel, #staged-bet')) closeRaisePanel();
+});
 $('#react-button').addEventListener('click', () => reactionTray.classList.toggle('hidden'));
 reactionTray.addEventListener('click', (event) => {
   const button = event.target.closest('button');
@@ -1029,7 +1081,9 @@ renderSoundToggle();
 
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=18'));
 
-if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
-  activeCode = queryRoom;
-  submitJoin(queryRoom, nameInput.value, true);
+const resumeRoom = queryRoom || localStorage.getItem('el-holdem:last-room')?.toUpperCase() || '';
+if (resumeRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${resumeRoom}`)) {
+  activeCode = resumeRoom;
+  reconnecting = true;
+  submitJoin(resumeRoom, nameInput.value, true);
 }

@@ -109,6 +109,20 @@ describe('host table setup', () => {
 });
 
 describe('betting flow', () => {
+  it('rotates the dealer and preflop first actor clockwise every round', () => {
+    const game = gameWithPlayers(4, 10_000);
+    const dealers = [];
+    const starters = [];
+    for (let hand = 0; hand < 4; hand += 1) {
+      startHand(game, () => 0.19);
+      dealers.push(game.dealerIndex);
+      starters.push(game.players.findIndex((player) => player.id === game.currentActor));
+      while (game.phase !== 'waiting') act(game, game.currentActor, { type: ACTIONS.FOLD });
+    }
+    assert.deepEqual(dealers, [0, 1, 2, 3]);
+    assert.deepEqual(starters, [3, 0, 1, 2]);
+  });
+
   it('moves from preflop to flop after every live player matches the bet', () => {
     const game = gameWithPlayers(3);
     startHand(game, () => 0.19);

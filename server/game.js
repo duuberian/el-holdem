@@ -199,7 +199,7 @@ function finishUncontested(game, winner) {
   const won = game.pot;
   creditChips(winner, won);
   const winners = [{ id: winner.id, amount: won }];
-  game.result = { type: 'uncontested', winners, text: winnerSummary(game, winners) };
+  game.result = { type: 'uncontested', street: game.phase, community: [...game.community], winners, text: winnerSummary(game, winners) };
   finishHand(game);
 }
 
@@ -298,7 +298,7 @@ function finishShowdown(game) {
     return showdownEntry(game, player, pending.payouts.get(id) ?? 0);
   });
   const winners = showdownPlayers.filter(({ amount }) => amount > 0);
-  game.result = { type: 'showdown', winners, showdownPlayers, text: winnerSummary(game, winners) };
+  game.result = { type: 'showdown', street: 'river', community: [...game.community], winners, showdownPlayers, text: winnerSummary(game, winners) };
   game.pendingShowdown = null;
   finishHand(game);
 }

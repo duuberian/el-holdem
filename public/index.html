@@ -7,7 +7,7 @@
   <meta name="description" content="Private, live Texas Hold'em for family and friends.">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/style.css?v=18">
+  <link rel="stylesheet" href="/style.css?v=19">
   <title>EL Holdem</title>
 </head>
 <body>
@@ -43,7 +43,7 @@
 
     <section id="game" class="game hidden" aria-live="polite">
       <header class="game-header">
-        <span id="app-version" class="version-badge">v1.8</span>
+        <span id="app-version" class="version-badge">v1.9</span>
         <div class="mini-brand"><span>♠</span> EL HOLDEM</div>
 
         <button id="sound-toggle" class="sound-toggle" aria-label="Mute game sounds" aria-pressed="false">SFX</button>
@@ -95,7 +95,7 @@
       <section id="chip-bank" class="chip-bank hidden" aria-label="Your chip bank">
         <div class="chip-bank-heading">
           <div><span>YOUR CHIP BANK</span><strong id="chip-bank-total">1,000</strong></div>
-          <button id="chip-bank-close" aria-label="Close chip bank"><span class="bank-close-pattern" aria-hidden="true"></span></button>
+          <button id="chip-bank-close" class="sheet-close" aria-label="Close chip bank">×</button>
         </div>
         <p>Tap a chip to break it down, or use ↑ to combine smaller chips into one larger chip.</p>
         <div id="chip-bank-rack" class="chip-bank-rack"></div>
@@ -110,7 +110,7 @@
       <section id="raise-panel" class="raise-panel hidden" role="dialog" aria-modal="true" aria-label="Arrange raise chips" aria-describedby="raise-help">
         <div class="raise-heading">
           <div><span id="raise-player-name">PLAYER · BUILD YOUR BET</span><strong>CHOOSE CHIPS</strong></div>
-          <button id="raise-cancel" aria-label="Cancel raise">×</button>
+          <button id="raise-cancel" class="sheet-close" aria-label="Cancel raise">×</button>
         </div>
         <p id="raise-help" class="raise-help">Tap a chip to add one. Tap a pile on the table to take one back.</p>
         <div id="raise-chips" class="raise-chips" aria-label="Add chips to raise"></div>
@@ -130,6 +130,6 @@
     </section>
   </main>
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/client.js?v=18"></script>
+  <script type="module" src="/client.js?v=19"></script>
 </body>
 </html>
