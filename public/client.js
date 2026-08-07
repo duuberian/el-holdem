@@ -28,8 +28,8 @@ let lastResultKey = '';
 let soundEnabled = localStorage.getItem('el-holdem:sound') !== 'muted';
 let audioContext = null;
 let toastTimer;
-let soloBotSocket = null;
-let soloBotTimer = null;
+let soloBotSockets = [];
+const soloBotTimers = new Map();
 
 let audioFailed = false;
 
@@ -170,45 +170,61 @@ function submitJoin(code, name, automatic = false) {
     }
     saveSession(reply.code, reply.token, name);
     enterGame();
-    if (automatic && localStorage.getItem(`el-holdem:solo-bot:${reply.code}`)) startSoloBot(reply.code);
+    const soloBotCount = Number(localStorage.getItem(`el-holdem:solo-bots:${reply.code}`));
+    if (automatic && soloBotCount > 0) startSoloBots(reply.code, soloBotCount);
   });
 }
 
-function startSoloBot(code) {
-  if (soloBotSocket) soloBotSocket.disconnect();
-  const tokenKey = `el-holdem:solo-bot:${code}`;
-  soloBotSocket = window.io({ forceNew: true });
-  let botActionPending = false;
-  let lastBotState = null;
+function startSoloBots(code, requestedCount = 3) {
+  for (const botSocket of soloBotSockets) botSocket.disconnect();
+  for (const timer of soloBotTimers.values()) clearTimeout(timer);
+  soloBotSockets = [];
+  soloBotTimers.clear();
+  const count = Math.min(5, Math.max(1, Number(requestedCount) || 3));
+  localStorage.setItem(`el-holdem:solo-bots:${code}`, String(count));
 
-  const queueBotAction = (data) => {
-    lastBotState = data;
-    if (data.state.phase === 'waiting' || data.state.currentActor !== data.selfId || botActionPending) return;
-    const actions = data.state.legalActions ?? [];
-    const type = actions.includes('check') ? 'check' : actions.includes('call') ? 'call' : actions.includes('fold') ? 'fold' : null;
-    if (!type) return;
-    botActionPending = true;
-    clearTimeout(soloBotTimer);
-    soloBotTimer = setTimeout(() => {
-      soloBotSocket.emit('action', { type }, () => {
-        botActionPending = false;
-        if (lastBotState) queueBotAction(lastBotState);
-      });
-    }, 550);
-  };
+  for (let index = 1; index <= count; index += 1) {
+    const botSocket = window.io({ forceNew: true });
+    const tokenKey = `el-holdem:solo-bot:${code}:${index}`;
+    const botName = `Test Bot ${index}`;
+    let botActionPending = false;
+    let lastBotState = null;
 
-  soloBotSocket.on('state', queueBotAction);
-  soloBotSocket.on('disconnect', () => {
-    clearTimeout(soloBotTimer);
-    botActionPending = false;
-  });
-  soloBotSocket.on('connect', () => {
-    const token = localStorage.getItem(tokenKey);
-    soloBotSocket.emit('join-room', { code, name: 'Test Bot', token }, (reply) => {
-      if (!reply.ok) showToast(reply.error);
-      else localStorage.setItem(tokenKey, reply.token);
+    const queueBotAction = (data) => {
+      lastBotState = data;
+      if (data.state.phase === 'waiting' || data.state.currentActor !== data.selfId || botActionPending) return;
+      const actions = data.state.legalActions ?? [];
+      const type = actions.includes('muck') ? 'muck'
+        : actions.includes('show') ? 'show'
+          : actions.includes('check') ? 'check'
+            : actions.includes('call') ? 'call'
+              : actions.includes('fold') ? 'fold' : null;
+      if (!type) return;
+      botActionPending = true;
+      clearTimeout(soloBotTimers.get(index));
+      soloBotTimers.set(index, setTimeout(() => {
+        botSocket.emit('action', { type }, () => {
+          botActionPending = false;
+          if (lastBotState) queueBotAction(lastBotState);
+        });
+      }, 350 + index * 90));
+    };
+
+    botSocket.on('state', queueBotAction);
+    botSocket.on('disconnect', () => {
+      clearTimeout(soloBotTimers.get(index));
+      soloBotTimers.delete(index);
+      botActionPending = false;
     });
-  });
+    botSocket.on('connect', () => {
+      const token = localStorage.getItem(tokenKey);
+      botSocket.emit('join-room', { code, name: botName, token }, (reply) => {
+        if (!reply.ok) showToast(reply.error);
+        else localStorage.setItem(tokenKey, reply.token);
+      });
+    });
+    soloBotSockets.push(botSocket);
+  }
 }
 
 function setPartyMode(mode) {
@@ -242,7 +258,7 @@ $('#solo-test').addEventListener('click', () => {
     }
     saveSession(reply.code, reply.token, name);
     enterGame();
-    startSoloBot(reply.code);
+    startSoloBots(reply.code, 3);
   });
 });
 
@@ -288,10 +304,14 @@ socket.on('disconnect', () => {
 function cardElement(code, back = false) {
   const card = document.createElement('div');
   card.className = back ? 'card back' : 'card';
-  if (back) return card;
+  if (back) {
+    card.setAttribute('aria-label', 'Hidden card');
+    return card;
+  }
   const suitMap = { s: '♠', h: '♥', d: '♦', c: '♣' };
   const suit = code.at(-1);
   const symbol = suitMap[suit] ?? suit;
+  card.setAttribute('aria-label', `${code.slice(0, -1)}${symbol}`);
   if (suit === 'h' || suit === 'd') card.classList.add('red');
 
   for (const position of ['top', 'bottom']) {
@@ -565,7 +585,14 @@ function playerElement(player, self, position) {
 
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
-  avatar.textContent = initials(player.name);
+  const avatarBankroll = document.createElement('div');
+  avatarBankroll.className = 'avatar-bankroll';
+  avatarBankroll.setAttribute('aria-label', `${player.name} stack ${player.stack.toLocaleString()} in chips`);
+  for (const denomination of CHIP_DENOMINATIONS) {
+    const count = player.chips?.[denomination] ?? 0;
+    if (count) avatarBankroll.append(chipPile(denomination, count));
+  }
+  avatar.append(avatarBankroll);
   if (player.isDealer) {
     const dealer = document.createElement('i');
     dealer.className = 'dealer';
@@ -575,28 +602,31 @@ function playerElement(player, self, position) {
 
   const cards = document.createElement('div');
   cards.className = 'hole-cards';
-  if (player.hand.length) player.hand.forEach((card) => cards.append(cardElement(card, self && !cardsRevealed)));
-  else if (player.cardCount) Array.from({ length: player.cardCount }, () => cards.append(cardElement('', true)));
-  if (!self) avatar.append(cards);
+  if (self && player.hand.length) player.hand.forEach((card) => cards.append(cardElement(card, !cardsRevealed)));
+  else if (!self && player.hand.length) {
+    player.hand.forEach((card) => cards.append(cardElement(card)));
+    avatar.append(cards);
+  }
 
   const name = document.createElement('div');
   name.className = 'player-name';
   name.textContent = `${player.name}${self ? ' · YOU' : ''}`;
+  const betLabel = document.createElement('span');
+  betLabel.className = 'player-bet-label';
+  if (player.bet > 0) betLabel.textContent = `BET ${player.bet.toLocaleString()}`;
+  else betLabel.classList.add('hidden');
   const stack = document.createElement('div');
   stack.className = 'player-stack';
   stack.textContent = `STACK ${player.stack.toLocaleString()}${player.allIn ? ' · ALL IN' : ''}`;
-  node.append(avatar, name, stack);
+  node.append(avatar, name, betLabel, stack);
   if (self) node.append(cards, revealCards);
   if (player.bet > 0) {
     const bet = document.createElement('div');
     bet.className = 'bet-chip';
+    bet.setAttribute('aria-label', `${player.name} has bet ${player.bet.toLocaleString()}`);
     for (const { denomination, count } of chipBreakdown(player.bet)) {
       bet.append(chipPile(denomination, count));
     }
-    const total = document.createElement('span');
-    total.className = 'bet-total';
-    total.textContent = `BET ${player.bet.toLocaleString()}`;
-    bet.append(total);
     node.append(bet);
   }
   return node;
@@ -609,7 +639,7 @@ function renderPlayers() {
   const opponents = snapshot.state.players.filter((player) => player.id !== snapshot.selfId);
   opponents.forEach((player, index) => {
     const angle = opponents.length === 1 ? 1.5 * Math.PI : Math.PI + (Math.PI * index) / (opponents.length - 1);
-    const x = 50 + 47 * Math.cos(angle);
+    const x = 50 + 35 * Math.cos(angle);
     const y = 53 + 34 * Math.sin(angle);
     container.append(playerElement(player, false, { x, y }));
   });
@@ -700,6 +730,7 @@ function renderControls() {
   const actions = snapshot.state.legalActions;
   const bar = $('#action-buttons');
   bar.replaceChildren();
+  controls.classList.toggle('showdown-decision', actions.includes('show') || actions.includes('muck'));
   const live = snapshot.state.phase !== 'waiting';
   controls.classList.toggle('hidden', !live);
   if (!live) {
@@ -716,6 +747,8 @@ function renderControls() {
     return;
   }
 
+  if (actions.includes('show')) bar.append(actionButton('Show cards', 'show', 'main'));
+  if (actions.includes('muck')) bar.append(actionButton('Muck hand', 'muck', 'danger'));
   if (actions.includes('fold')) bar.append(actionButton('Fold', 'fold', 'danger'));
   if (actions.includes('check')) bar.append(actionButton('Check', 'check', 'main'));
   if (actions.includes('call')) {
@@ -758,6 +791,40 @@ function renderLobby() {
   }
 }
 
+function renderResult() {
+  const result = $('#result');
+  const roundResult = snapshot.state.result;
+  result.classList.toggle('hidden', !roundResult);
+  result.replaceChildren();
+  if (!roundResult) return;
+
+  const headline = document.createElement('div');
+  headline.className = 'result-text';
+  headline.textContent = roundResult.text ?? '';
+  result.append(headline);
+  if (roundResult.type !== 'showdown') return;
+
+  const shownPlayers = roundResult.showdownPlayers ?? roundResult.winners ?? [];
+  for (const shown of shownPlayers) {
+    if (!Array.isArray(shown.cards) || !shown.cards.length) continue;
+    const player = snapshot.state.players.find((candidate) => candidate.id === shown.id);
+    const summary = document.createElement('section');
+    summary.className = `winner-summary${shown.amount > 0 ? ' won' : ''}`;
+    const identity = document.createElement('strong');
+    identity.className = 'winner-name';
+    identity.textContent = `${player?.name ?? 'Player'}${shown.amount > 0 ? ` · WON ${Number(shown.amount).toLocaleString()}` : ''}`;
+    const cards = document.createElement('div');
+    cards.className = 'winner-cards';
+    cards.setAttribute('aria-label', `${player?.name ?? 'Player'} showdown cards`);
+    cards.append(...shown.cards.map((card) => cardElement(card)));
+    const hand = document.createElement('span');
+    hand.className = 'winner-hand';
+    hand.textContent = shown.handName ?? '';
+    summary.append(identity, cards, hand);
+    result.append(summary);
+  }
+}
+
 function render() {
   if (!snapshot) return;
   $('#room-code').textContent = snapshot.roomCode;
@@ -774,9 +841,7 @@ function render() {
   renderLobby();
   renderControls();
   if (actionPending) setActionBusy(true);
-  const result = $('#result');
-  result.classList.toggle('hidden', !snapshot.state.result);
-  result.textContent = snapshot.state.result?.text ?? '';
+  renderResult();
 }
 
 socket.on('state', (data) => {
@@ -949,7 +1014,7 @@ $('#sound-toggle').addEventListener('click', () => {
 document.addEventListener('pointerdown', () => getAudioContext(), { once: true });
 renderSoundToggle();
 
-if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=14'));
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js?v=15'));
 
 if (queryRoom && nameInput.value && localStorage.getItem(`el-holdem:token:${queryRoom}`)) {
   activeCode = queryRoom;

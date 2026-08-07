@@ -19,6 +19,8 @@ export const ACTIONS = Object.freeze({
   CALL: 'call',
   RAISE: 'raise',
   ALL_IN: 'all-in',
+  SHOW: 'show',
+  MUCK: 'muck',
 });
 
 export function createDeck(random = Math.random) {
@@ -49,6 +51,8 @@ export function createGame(options = {}) {
     pending: new Set(),
     result: null,
     showdown: false,
+    shownHands: new Set(),
+    pendingShowdown: null,
   };
 }
 
@@ -135,6 +139,8 @@ export function startHand(game, random = Math.random) {
   game.burned = [];
   game.result = null;
   game.showdown = false;
+  game.shownHands = new Set();
+  game.pendingShowdown = null;
 
   for (const player of game.players) {
     ensureChipRack(player);
@@ -182,10 +188,18 @@ function actionable(player) {
   return !player.folded && !player.allIn && player.hand?.length === 2;
 }
 
+function winnerSummary(game, winners) {
+  return winners.map(({ id, amount }) => {
+    const name = game.players.find((player) => player.id === id)?.name ?? 'Player';
+    return `${name} wins ${amount.toLocaleString('en-GB')}`;
+  }).join(' · ');
+}
+
 function finishUncontested(game, winner) {
   const won = game.pot;
   creditChips(winner, won);
-  game.result = { type: 'uncontested', winners: [{ id: winner.id, amount: won }], text: `${winner.name} wins ${won}` };
+  const winners = [{ id: winner.id, amount: won }];
+  game.result = { type: 'uncontested', winners, text: winnerSummary(game, winners) };
   finishHand(game);
 }
 
@@ -222,7 +236,7 @@ function runOutBoard(game) {
     else if (game.community.length === 3) dealStreet(game, 'turn', 1);
     else dealStreet(game, 'river', 1);
   }
-  showdown(game);
+  beginShowdown(game);
 }
 
 function advanceStreet(game) {
@@ -230,7 +244,7 @@ function advanceStreet(game) {
   else if (game.phase === 'flop') dealStreet(game, 'turn', 1);
   else if (game.phase === 'turn') dealStreet(game, 'river', 1);
   else if (game.phase === 'river') {
-    showdown(game);
+    beginShowdown(game);
     return;
   }
 
@@ -267,13 +281,72 @@ function distributeSidePots(game) {
   return payouts;
 }
 
-function showdown(game) {
+function showdownEntry(game, player, amount = 0) {
+  const solvedHand = Hand.solve([...player.hand, ...game.community]);
+  return {
+    id: player.id,
+    amount,
+    cards: [...player.hand],
+    handName: solvedHand.descr || solvedHand.name,
+  };
+}
+
+function finishShowdown(game) {
+  const pending = game.pendingShowdown;
+  const showdownPlayers = [...game.shownHands].map((id) => {
+    const player = game.players.find((candidate) => candidate.id === id);
+    return showdownEntry(game, player, pending.payouts.get(id) ?? 0);
+  });
+  const winners = showdownPlayers.filter(({ amount }) => amount > 0);
+  game.result = { type: 'showdown', winners, showdownPlayers, text: winnerSummary(game, winners) };
+  game.pendingShowdown = null;
+  finishHand(game);
+}
+
+function advanceShowdown(game) {
+  const pending = game.pendingShowdown;
+  while (pending.queue.length) {
+    const playerId = pending.queue[0];
+    const player = game.players.find((candidate) => candidate.id === playerId);
+    const candidateHand = Hand.solve([...player.hand, ...game.community]);
+    const shownHands = [...game.shownHands].map((id) => {
+      const shown = game.players.find((candidate) => candidate.id === id);
+      return Hand.solve([...shown.hand, ...game.community]);
+    });
+    const mustShow = game.shownHands.size === 0
+      || (pending.payouts.get(playerId) ?? 0) > 0
+      || new Set(Hand.winners([candidateHand, ...shownHands])).has(candidateHand);
+    if (mustShow) {
+      game.shownHands.add(playerId);
+      pending.queue.shift();
+      continue;
+    }
+    if (player.connected === false) {
+      pending.queue.shift();
+      continue;
+    }
+    game.phase = 'showdown';
+    game.currentActor = playerId;
+    return;
+  }
+  finishShowdown(game);
+}
+
+export function beginShowdown(game) {
   game.showdown = true;
   const payouts = distributeSidePots(game);
-  const winners = [...payouts.entries()].map(([id, amount]) => ({ id, amount }));
-  const names = winners.map(({ id }) => game.players.find((player) => player.id === id)?.name).join(' & ');
-  game.result = { type: 'showdown', winners, text: `${names} win${winners.length === 1 ? 's' : ''} the pot` };
-  finishHand(game);
+  const order = [];
+  let seat = game.dealerIndex;
+  for (let count = 0; count < game.players.length; count += 1) {
+    seat = (seat + 1) % game.players.length;
+    const player = game.players[seat];
+    if (!player.folded && player.hand?.length === 2) order.push(player.id);
+  }
+  game.shownHands = new Set();
+  game.pendingShowdown = { payouts, queue: order };
+  game.phase = 'showdown';
+  game.currentActor = null;
+  advanceShowdown(game);
 }
 
 export function exchangePlayerChip(game, playerId, denomination, direction = 'down') {
@@ -290,7 +363,18 @@ export function act(game, playerId, action) {
   if (game.phase === 'waiting') throw new Error('No hand is running');
   if (game.currentActor !== playerId) throw new Error('It is not your turn');
   const player = game.players.find((candidate) => candidate.id === playerId);
-  if (!player || !actionable(player)) throw new Error('Player cannot act');
+  if (!player) throw new Error('Player cannot act');
+
+  if (game.phase === 'showdown') {
+    if (![ACTIONS.SHOW, ACTIONS.MUCK].includes(action.type)) throw new Error('Choose whether to show or muck');
+    if (action.type === ACTIONS.SHOW) game.shownHands.add(playerId);
+    game.pendingShowdown.queue.shift();
+    game.currentActor = null;
+    advanceShowdown(game);
+    return game;
+  }
+
+  if (!actionable(player)) throw new Error('Player cannot act');
 
   const toCall = Math.max(0, game.currentBet - player.bet);
   const oldCurrentBet = game.currentBet;
@@ -354,6 +438,7 @@ export function legalActions(game, playerId) {
   if (game.currentActor !== playerId) return [];
   const player = game.players.find((candidate) => candidate.id === playerId);
   if (!player) return [];
+  if (game.phase === 'showdown') return [ACTIONS.SHOW, ACTIONS.MUCK];
   const toCall = Math.max(0, game.currentBet - player.bet);
   return [
     ACTIONS.FOLD,
@@ -389,7 +474,7 @@ export function publicState(game, viewerId) {
       allIn: player.allIn ?? false,
       connected: player.connected !== false,
       isDealer: seat === game.dealerIndex,
-      hand: player.id === viewerId || (game.showdown && !player.folded) ? [...(player.hand ?? [])] : [],
+      hand: player.id === viewerId || game.shownHands?.has(player.id) ? [...(player.hand ?? [])] : [],
       cardCount: player.hand?.length ?? 0,
     })),
     legalActions: legalActions(game, viewerId),

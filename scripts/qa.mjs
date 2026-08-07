@@ -27,10 +27,12 @@ await solo.goto(base, { waitUntil: 'networkidle' });
 await solo.getByLabel('Your name').fill('Solo Daniel');
 await solo.getByRole('button', { name: 'Solo test table' }).click();
 await solo.locator('#game:not(.hidden)').waitFor();
-await solo.getByText('Test Bot', { exact: false }).first().waitFor();
+await solo.getByText('Test Bot 1', { exact: false }).first().waitFor();
+await solo.getByText('Test Bot 2', { exact: false }).first().waitFor();
+await solo.getByText('Test Bot 3', { exact: false }).first().waitFor();
+if (await solo.locator('.player').count() !== 4) throw new Error('Solo test table did not create three automated opponents');
 await solo.getByRole('button', { name: 'Deal the cards' }).click();
 await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
-if (await solo.locator('.player').count() !== 2) throw new Error('Solo test table did not create exactly one automated opponent');
 for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
   const check = solo.locator('#action-buttons button:has-text("Check")').first();
   const call = solo.locator('#action-buttons button:has-text("Call")').first();
@@ -39,10 +41,11 @@ for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()
   await solo.waitForTimeout(850);
 }
 if ((await solo.locator('#phase').textContent()).trim() !== 'FLOP') throw new Error('Solo Test Bot did not automatically complete preflop play');
-await solo.getByRole('button', { name: 'Check' }).waitFor({ timeout: 2500 });
+await solo.locator('#action-buttons button').filter({ hasText: /Check|Call/ }).first().waitFor({ timeout: 6000 });
 await solo.reload({ waitUntil: 'networkidle' });
 await solo.locator('#game:not(.hidden)').waitFor({ timeout: 5000 });
-await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).waitFor({ timeout: 5000 });
+await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).first().waitFor({ timeout: 5000 });
+if (await solo.locator('.player:not(.self):not(.disconnected)').filter({ hasText: 'Test Bot' }).count() !== 3) throw new Error('All three Solo Test Bots did not reconnect after reload');
 await solo.getByRole('button', { name: 'New round' }).click();
 await solo.locator('.player.self .hole-cards .card.back').first().waitFor();
 for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()).trim() === 'PREFLOP'; attempt += 1) {
@@ -53,8 +56,13 @@ for (let attempt = 0; attempt < 4 && (await solo.locator('#phase').textContent()
   await solo.waitForTimeout(850);
 }
 await solo.locator('#phase').filter({ hasText: 'FLOP' }).waitFor({ timeout: 3000 });
-await solo.getByRole('button', { name: 'Check' }).waitFor({ timeout: 2500 });
-if ((await solo.locator('#action-buttons').textContent()).includes('another player')) throw new Error('Solo mode misleadingly asks for another player after Test Bot joined');
+await solo.locator('#action-buttons button').filter({ hasText: /Check|Call/ }).first().waitFor({ timeout: 6000 });
+if ((await solo.locator('#action-buttons').textContent()).includes('another player')) throw new Error('Solo mode misleadingly asks for another player after Test Bots joined');
+const soloSeats = await solo.locator('.player').evaluateAll((players) => players.map((player) => {
+  const rect = player.getBoundingClientRect();
+  return { name: player.querySelector('.player-name')?.textContent.trim(), left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, viewportWidth: innerWidth, viewportHeight: innerHeight };
+}));
+if (soloSeats.length !== 4 || soloSeats.some(({ left, right, viewportWidth }) => left < 0 || right > viewportWidth)) throw new Error(`Four-player Solo seats are clipped outside the mobile viewport: ${JSON.stringify(soloSeats)}`);
 await solo.screenshot({ path: new URL('solo-test-mobile.png', out).pathname, fullPage: true });
 
 await host.goto(base, { waitUntil: 'networkidle' });
@@ -66,7 +74,7 @@ await host.getByLabel('Starting chips per player').fill('2500');
 await host.getByRole('button', { name: 'Create party' }).click();
 await host.locator('#game:not(.hidden)').waitFor();
 const versionBadge = await host.locator('#app-version').evaluate((badge) => ({ text: badge.textContent.trim(), rect: badge.getBoundingClientRect().toJSON(), width: innerWidth }));
-if (versionBadge.text !== 'v1.4' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
+if (versionBadge.text !== 'v1.5' || versionBadge.rect.top > 8 || versionBadge.rect.right < versionBadge.width - 12) throw new Error(`Version badge is not top-right: ${JSON.stringify(versionBadge)}`);
 const roomCode = (await host.locator('#room-code').textContent()).trim();
 const waitingLayers = await host.evaluate(() => ({ lobby: Number(getComputedStyle(document.querySelector('#lobby')).zIndex), player: Number(getComputedStyle(document.querySelector('.player.self')).zIndex) }));
 if (waitingLayers.lobby <= waitingLayers.player) throw new Error(`Waiting lobby does not cover table players: ${JSON.stringify(waitingLayers)}`);
@@ -94,8 +102,22 @@ await guest.locator('.player-stack').filter({ hasText: '3,000' }).first().waitFo
 await host.getByRole('button', { name: 'Deal the cards' }).click();
 await host.locator('.player.self .hole-cards .card.back').first().waitFor();
 await guest.locator('.player.self .hole-cards .card.back').first().waitFor();
+const bankIconVisual = await host.evaluate(() => {
+  const react = document.querySelector('#react-button').getBoundingClientRect();
+  const bank = document.querySelector('#chip-bank-button').getBoundingClientRect();
+  const pattern = document.querySelector('#chip-bank-button .bank-pattern');
+  const style = pattern ? getComputedStyle(pattern) : null;
+  return { react: react.toJSON(), bank: bank.toJSON(), pattern: pattern?.getBoundingClientRect().toJSON() ?? null, background: style?.backgroundImage ?? 'none', clipPath: style?.clipPath ?? 'none' };
+});
+if (!bankIconVisual.pattern || Math.abs(bankIconVisual.bank.width - bankIconVisual.react.width) > 2 || Math.abs(bankIconVisual.bank.height - bankIconVisual.react.height) > 2 || bankIconVisual.background === 'none' || bankIconVisual.clipPath === 'none') throw new Error(`Chip bank does not use an emoji-sized checkered pixel icon: ${JSON.stringify(bankIconVisual)}`);
 await host.getByRole('button', { name: 'Open chip bank' }).click();
 await host.locator('#chip-bank:not(.hidden)').waitFor();
+const bankCloseVisual = await host.getByRole('button', { name: 'Close chip bank' }).evaluate((button) => {
+  const pattern = button.querySelector('.bank-close-pattern');
+  const style = pattern ? getComputedStyle(pattern) : null;
+  return { width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height, background: style?.backgroundImage ?? 'none', clipPath: style?.clipPath ?? 'none', bankClipPath: getComputedStyle(document.querySelector('.bank-pattern')).clipPath };
+});
+if (bankCloseVisual.width < 47 || bankCloseVisual.height < 47 || bankCloseVisual.background === 'none' || bankCloseVisual.clipPath === 'none' || bankCloseVisual.clipPath === bankCloseVisual.bankClipPath) throw new Error(`Chip-bank close is not a distinct checkered X control: ${JSON.stringify(bankCloseVisual)}`);
 const chipBankValueBefore = await host.locator('#chip-bank-total').textContent();
 await host.getByRole('button', { name: 'Break one 500 chip into smaller chips' }).click();
 await host.locator('[data-chip-bank="500"] .pile-count').filter({ hasText: '×4' }).waitFor();
@@ -184,7 +206,40 @@ for (const page of [host, guest]) {
 }
 const holeCardWidth = await host.locator('.player.self .hole-cards .card').first().evaluate((card) => card.getBoundingClientRect().width);
 if (holeCardWidth < 40) throw new Error(`Hole cards are still too small: ${holeCardWidth}px`);
-if (await host.locator('.bet-chip .chip-pile').count() < 2) throw new Error('Posted bets were not rendered as numbered pixel chip piles');
+if (await host.locator('.bet-chip .chip-pile').count() < 2) throw new Error('Posted bets were not rendered as pixel chip piles');
+const postedBetOwnership = await host.locator('.player:has(.bet-chip)').evaluateAll((players) => players.map((player) => {
+  const name = player.querySelector('.player-name');
+  const amount = player.querySelector(':scope > .player-bet-label');
+  const bet = player.querySelector('.bet-chip');
+  const nameRect = name?.getBoundingClientRect();
+  const amountRect = amount?.getBoundingClientRect();
+  const amountStyle = amount ? getComputedStyle(amount) : null;
+  const cardsRect = player.querySelector('.hole-cards')?.getBoundingClientRect();
+  const overlapArea = (a, b) => (!a || !b ? 0 : Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)));
+  return {
+    name: name?.textContent.replace(' · YOU', '').trim() ?? '',
+    aria: bet?.getAttribute('aria-label') ?? '',
+    amount: amount?.textContent.trim() ?? '',
+    amountUnderName: Boolean(nameRect && amountRect && amountRect.top >= nameRect.bottom - 1 && Math.abs((amountRect.left + amountRect.width / 2) - (nameRect.left + nameRect.width / 2)) < 3),
+    unboxed: Boolean(amountStyle && amountStyle.backgroundColor === 'rgba(0, 0, 0, 0)' && ['0px', 'none'].includes(amountStyle.borderTopWidth)),
+    floatingTotalCount: bet?.querySelectorAll('.bet-owner, .bet-total').length ?? -1,
+    smallPileLabelsVisible: [...(bet?.querySelectorAll('.chip-value, .pile-count') ?? [])].some((label) => {
+      const style = getComputedStyle(label);
+      return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0;
+    }),
+    overlapWithCards: overlapArea(amountRect, cardsRect),
+  };
+}));
+if (postedBetOwnership.length < 2 || postedBetOwnership.some(({ name, aria, amount, amountUnderName, unboxed, floatingTotalCount, smallPileLabelsVisible, overlapWithCards }) => !aria.includes(`${name} has bet`) || !/^BET [\d,]+$/.test(amount) || !amountUnderName || !unboxed || floatingTotalCount !== 0 || smallPileLabelsVisible || overlapWithCards > 1)) {
+  throw new Error(`Bet totals are not clearly printed under each player name without a box: ${JSON.stringify(postedBetOwnership)}`);
+}
+const opponentMarkers = await host.locator('.player:not(.self)').evaluateAll((players) => players.map((player) => ({
+  bankroll: player.querySelector('.avatar-bankroll')?.getAttribute('aria-label') ?? '',
+  piles: player.querySelectorAll('.avatar-bankroll .chip-pile').length,
+  hiddenCardBacks: player.querySelectorAll('.hole-cards .card.back').length,
+})));
+if (!opponentMarkers.length || opponentMarkers.some(({ bankroll, piles, hiddenCardBacks }) => !/^.+ stack [\d,]+ in chips$/.test(bankroll) || piles < 1 || hiddenCardBacks !== 0)) throw new Error(`Opponent markers are not bankroll chip piles: ${JSON.stringify(opponentMarkers)}`);
+await host.screenshot({ path: new URL('committed-bets-mobile.png', out).pathname, fullPage: true });
 if ((await host.locator('#pot strong').textContent()).trim() !== '0') throw new Error('Street bets moved into the pot before the betting round completed');
 const tableShape = await host.locator('.poker-table').evaluate((table) => {
   const rect = table.getBoundingClientRect();
@@ -267,7 +322,7 @@ await host.getByRole('button', { name: 'Raise' }).click();
 await host.getByRole('button', { name: 'Add 20 chip' }).click();
 await host.getByRole('button', { name: 'Add 10 chip' }).click();
 await host.getByRole('button', { name: 'Confirm staged raise' }).click();
-await host.locator('.player.self .bet-total').filter({ hasText: 'BET 40' }).waitFor();
+await host.locator('.player.self > .player-bet-label').filter({ hasText: 'BET 40' }).waitFor();
 if ((await host.locator('#pot strong').textContent()).trim() !== '0') throw new Error('Confirmed chips moved into the pot before the other player acted');
 
 const privacy = {
@@ -365,16 +420,62 @@ for (const page of [host, guest]) {
   }
 }
 await host.getByRole('button', { name: 'New round' }).waitFor();
+const roundResult = await host.locator('#result').evaluate((result) => {
+  const lobby = document.querySelector('#lobby');
+  const style = getComputedStyle(result);
+  const rect = result.getBoundingClientRect();
+  const lobbyRect = lobby.getBoundingClientRect();
+  const lobbyCopy = lobby.querySelector(':scope > div:not(#result)')?.getBoundingClientRect();
+  return { text: result.textContent.trim(), visible: style.display !== 'none' && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0, resultZ: Number(style.zIndex), lobbyZ: Number(getComputedStyle(lobby).zIndex), overlapsLobby: Math.max(0, Math.min(rect.right, lobbyRect.right) - Math.max(rect.left, lobbyRect.left)) * Math.max(0, Math.min(rect.bottom, lobbyRect.bottom) - Math.max(rect.top, lobbyRect.top)) > 0, coversLobbyCopy: lobbyCopy ? rect.bottom > lobbyCopy.top : true };
+});
+if (!roundResult.visible || !/(Daniel|Family) wins [\d,]+/.test(roundResult.text) || roundResult.coversLobbyCopy) throw new Error(`Round result does not clearly show who won and how much: ${JSON.stringify(roundResult)}`);
+await host.screenshot({ path: new URL('round-result-mobile.png', out).pathname, fullPage: true });
 await host.getByRole('button', { name: 'New game' }).waitFor();
 await host.getByRole('button', { name: 'New round' }).click();
+await host.locator('#result.hidden').waitFor({ state: 'attached' });
+await host.locator('#phase').filter({ hasText: 'PREFLOP' }).waitFor();
 await host.locator('.player.self .hole-cards .card.back').first().waitFor();
-for (const page of [host, guest]) {
-  const fold = page.locator('#action-buttons button:has-text("Fold")').first();
-  if (await fold.isVisible().catch(() => false)) {
-    await fold.click();
-    break;
+let showdownChoiceChecked = false;
+for (let turn = 0; turn < 40 && await host.locator('#result').evaluate((result) => result.classList.contains('hidden')); turn += 1) {
+  let acted = false;
+  for (const page of [host, guest]) {
+    for (const label of ['Show cards', 'Call', 'Check']) {
+      const button = page.getByRole('button', { name: label, exact: false }).first();
+      if (await button.isVisible().catch(() => false)) {
+        if (label === 'Show cards') {
+          const showdownControls = await page.locator('#controls').evaluate((controls) => ({
+            labels: [...controls.querySelectorAll('#action-buttons button')].map((entry) => entry.textContent.trim()),
+            heights: [...controls.querySelectorAll('#action-buttons button')].map((entry) => entry.getBoundingClientRect().height),
+            reactDisplay: getComputedStyle(controls.querySelector('#react-button')).display,
+            bankDisplay: getComputedStyle(controls.querySelector('#chip-bank-button')).display,
+          }));
+          if (showdownControls.labels.join('|') !== 'Show cards|Muck hand' || showdownControls.heights.some((height) => height < 68) || showdownControls.reactDisplay !== 'none' || showdownControls.bankDisplay !== 'none') throw new Error(`Showdown did not replace poker controls with only two large SHOW/MUCK options: ${JSON.stringify(showdownControls)}`);
+          showdownChoiceChecked = true;
+        }
+        await button.click();
+        await page.waitForTimeout(120);
+        acted = true;
+        break;
+      }
+    }
+    if (acted) break;
   }
+  if (!acted) throw new Error('Could not advance the second round to showdown');
 }
+await host.locator('#result:not(.hidden)').waitFor();
+if (await host.locator('#result:not(.hidden) .winner-cards .card').count() === 0) {
+  const resultDebug = await host.locator('#result').evaluate((result) => ({ text: result.textContent.trim(), html: result.innerHTML, phase: document.querySelector('#phase')?.textContent.trim() }));
+  throw new Error(`Second round ended without visible showdown cards: ${JSON.stringify(resultDebug)}`);
+}
+const winningCards = await host.locator('#result').evaluate((result) => ({
+  rows: [...result.querySelectorAll('.winner-summary')].map((row) => ({
+    cards: [...row.querySelectorAll('.winner-cards .card')].map((card) => ({ label: card.getAttribute('aria-label'), width: card.getBoundingClientRect().width })),
+    hand: row.querySelector('.winner-hand')?.textContent.trim() ?? '',
+    name: row.querySelector('.winner-name')?.textContent.trim() ?? '',
+  })),
+}));
+if (winningCards.rows.length < 2 || winningCards.rows.some((row) => row.cards.length !== 2 || row.cards.some((card) => !card.label || card.width < 46) || !row.hand || !row.name)) throw new Error(`Showdown result does not clearly show every remaining player's large cards and hand: ${JSON.stringify(winningCards)}`);
+await host.screenshot({ path: new URL('showdown-result-mobile.png', out).pathname, fullPage: true });
 await host.getByRole('button', { name: 'New game' }).waitFor();
 await host.getByRole('button', { name: 'New game' }).click();
 await host.locator('.player.self .hole-cards .card.back').first().waitFor();

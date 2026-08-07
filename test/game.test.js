@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ACTIONS,
+  beginShowdown,
   createDeck,
   createGame,
   exchangePlayerChip,
@@ -140,6 +141,68 @@ describe('betting flow', () => {
     assert.equal(game.phase, 'waiting');
     assert.ok(game.players.find((p) => p.id === survivor).stack > before);
     assertChipBacked(game);
+  });
+
+  it('names every showdown winner with the exact amount won', () => {
+    const game = gameWithPlayers(2);
+    startHand(game, () => 0.37);
+    for (let turn = 0; turn < 30 && game.phase !== 'waiting'; turn += 1) {
+      const actor = game.players.find((player) => player.id === game.currentActor);
+      if (game.phase === 'showdown') {
+        act(game, actor.id, { type: ACTIONS.SHOW });
+        continue;
+      }
+      const toCall = game.currentBet - actor.bet;
+      act(game, actor.id, { type: toCall > 0 ? ACTIONS.CALL : ACTIONS.CHECK });
+    }
+    assert.equal(game.phase, 'waiting');
+    assert.equal(game.result.type, 'showdown');
+    assert.equal(game.result.showdownPlayers.length, 2);
+    for (const shown of game.result.showdownPlayers) {
+      const player = game.players.find((candidate) => candidate.id === shown.id);
+      assert.deepEqual(shown.cards, player.hand);
+      assert.equal(shown.cards.length, 2);
+      assert.match(shown.handName, /\S/);
+      assert.equal(shown.amount, game.result.winners.find((winner) => winner.id === shown.id)?.amount ?? 0);
+    }
+    for (const winner of game.result.winners) {
+      const player = game.players.find((candidate) => candidate.id === winner.id);
+      assert.match(game.result.text, new RegExp(`${player.name} wins ${winner.amount}`));
+      assert.deepEqual(winner.cards, player.hand);
+      assert.equal(winner.cards.length, 2);
+      assert.match(winner.handName, /\S/);
+    }
+  });
+
+  it('pauses for two large show-or-muck choices when a shown hand is better', () => {
+    const game = gameWithPlayers(2);
+    game.phase = 'river';
+    game.dealerIndex = 1;
+    game.community = ['Kc', 'Qd', 'Jh', '8s', '7c'];
+    game.pot = 40;
+    game.players[0].hand = ['As', 'Ad'];
+    game.players[1].hand = ['2c', '3d'];
+    for (const player of game.players) {
+      player.folded = false;
+      player.allIn = false;
+      player.bet = 0;
+      player.totalBet = 20;
+    }
+
+    beginShowdown(game);
+
+    assert.equal(game.phase, 'showdown');
+    assert.equal(game.currentActor, 'p2');
+    assert.equal(game.result, null);
+    assert.deepEqual(publicState(game, 'p2').legalActions, [ACTIONS.SHOW, ACTIONS.MUCK]);
+    assert.deepEqual(publicState(game, 'p1').players.find((player) => player.id === 'p2').hand, []);
+    assert.deepEqual(publicState(game, 'p2').players.find((player) => player.id === 'p1').hand, ['As', 'Ad']);
+
+    act(game, 'p2', { type: ACTIONS.MUCK });
+
+    assert.equal(game.phase, 'waiting');
+    assert.deepEqual(game.result.showdownPlayers.map(({ id }) => id), ['p1']);
+    assert.equal(game.result.winners[0].id, 'p1');
   });
 
   it('rejects actions from a player whose turn it is not', () => {
